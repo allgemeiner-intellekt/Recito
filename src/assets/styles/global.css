@@ -1,0 +1,21 @@
+:host,
+:root {
+  --ir-font: ui-rounded, "SF Pro Rounded", "Avenir Next", "Segoe UI", sans-serif;
+  --ir-bg: #ffffff;
+  --ir-fg: #1a1a1a;
+  --ir-muted: #6b6b6b;
+  --ir-border: #e5e5e5;
+  --ir-shadow: 0 10px 28px rgba(0, 0, 0, 0.12);
+  --ir-accent: #1a1a1a;
+  --ir-accent-fg: #ffffff;
+  --ir-surface: rgba(255, 255, 255, 0.92);
+  --ir-surface-2: rgba(245, 245, 245, 0.9);
+}
+
+.ir-reset {
+  font-family: var(--ir-font);
+  color: var(--ir-fg);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+

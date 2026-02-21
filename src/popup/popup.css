@@ -1,0 +1,114 @@
+:root {
+  --bg: #fbfbfb;
+  --fg: #151515;
+  --muted: #6b6b6b;
+  --border: #e5e5e5;
+  --accent: #151515;
+  --accent-fg: #ffffff;
+  font-family: ui-rounded, "SF Pro Rounded", "Avenir Next", "Segoe UI", sans-serif;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--fg);
+}
+
+body {
+  width: 360px;
+  height: 520px;
+  overflow: hidden;
+}
+
+.p-wrap {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  height: 100%;
+}
+
+.p-header {
+  padding: 14px 14px 10px;
+  border-bottom: 1px solid var(--border);
+  background: linear-gradient(180deg, #ffffff 0%, #fafafa 100%);
+}
+
+.p-title {
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+}
+
+.p-body {
+  padding: 14px;
+  overflow: auto;
+  display: grid;
+  gap: 12px;
+}
+
+.p-card {
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 12px;
+}
+
+.p-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.p-muted {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.p-btn {
+  appearance: none;
+  border: 1px solid var(--border);
+  background: #fff;
+  color: var(--fg);
+  border-radius: 12px;
+  padding: 10px 12px;
+  cursor: pointer;
+  transition: transform 0.12s ease;
+}
+
+.p-btn:active {
+  transform: scale(0.98);
+}
+
+.p-btn-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-fg);
+  font-weight: 600;
+}
+
+.p-select,
+.p-range,
+.p-input {
+  width: 100%;
+}
+
+.p-select,
+.p-input {
+  height: 34px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  padding: 0 10px;
+  font-family: inherit;
+}
+
+.p-footer {
+  border-top: 1px solid var(--border);
+  background: #fff;
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+

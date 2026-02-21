@@ -1,0 +1,14 @@
+.ir-unit.ir-sentence-active {
+  background-color: #f5f5f5 !important;
+  border-radius: 3px;
+  box-decoration-break: clone;
+}
+
+.ir-unit.ir-word-active {
+  background-color: #1a1a1a !important;
+  color: #ffffff !important;
+  border-radius: 2px;
+  padding: 0 1px;
+  transition: background-color 0.1s ease, color 0.1s ease;
+}
+

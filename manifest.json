@@ -1,0 +1,38 @@
+{
+  "manifest_version": 3,
+  "name": "Immersive Reader",
+  "version": "0.1.0",
+  "description": "AI-powered text-to-speech with real-time highlighting for any web page",
+  "permissions": ["activeTab", "tabs", "storage", "offscreen"],
+  "host_permissions": ["<all_urls>"],
+  "action": {
+    "default_popup": "src/popup/index.html",
+    "default_title": "Immersive Reader",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "48": "icons/icon-48.png",
+      "128": "icons/icon-128.png"
+    }
+  },
+  "options_page": "src/options/index.html",
+  "background": {
+    "service_worker": "src/background/index.ts",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "js": ["src/content/index.tsx"],
+      "css": ["src/content/content.css"],
+      "matches": ["<all_urls>"],
+      "run_at": "document_idle"
+    }
+  ],
+  "icons": {
+    "16": "icons/icon-16.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'; media-src 'self' blob:; img-src 'self' data: blob:; connect-src 'self' http: https: ws: wss:;"
+  }
+}

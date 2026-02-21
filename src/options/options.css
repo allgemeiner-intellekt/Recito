@@ -1,0 +1,106 @@
+:root {
+  --bg: #f7f7f8;
+  --fg: #151515;
+  --muted: #676767;
+  --border: #e2e2e7;
+  --card: #ffffff;
+  --accent: #151515;
+  --accent-fg: #ffffff;
+  font-family: ui-rounded, "SF Pro Rounded", "Avenir Next", "Segoe UI", sans-serif;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--fg);
+}
+
+.o-wrap {
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+.o-title {
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.3px;
+  margin-bottom: 8px;
+}
+
+.o-sub {
+  color: var(--muted);
+  margin-bottom: 18px;
+}
+
+.o-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 14px;
+}
+
+.o-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 14px;
+}
+
+.o-row {
+  display: grid;
+  grid-template-columns: 160px 1fr;
+  gap: 12px;
+  align-items: center;
+  padding: 8px 0;
+}
+
+.o-label {
+  font-weight: 700;
+}
+
+.o-help {
+  color: var(--muted);
+  font-size: 12px;
+  margin-top: 4px;
+}
+
+.o-input,
+.o-select {
+  height: 38px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  padding: 0 12px;
+  font-family: inherit;
+  width: 100%;
+}
+
+.o-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.o-btn {
+  appearance: none;
+  border: 1px solid var(--border);
+  background: #fff;
+  color: var(--fg);
+  border-radius: 12px;
+  padding: 10px 12px;
+  cursor: pointer;
+  transition: transform 0.12s ease;
+}
+
+.o-btn:active {
+  transform: scale(0.98);
+}
+
+.o-btn-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-fg);
+  font-weight: 700;
+}
+
