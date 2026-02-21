@@ -22,7 +22,7 @@
   "content_scripts": [
     {
       "js": ["src/content/index.tsx"],
-      "css": ["src/content/content.css"],
+      "css": ["content.css"],
       "matches": ["<all_urls>"],
       "run_at": "document_idle"
     }
