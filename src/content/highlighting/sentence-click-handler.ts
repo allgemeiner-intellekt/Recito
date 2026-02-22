@@ -35,7 +35,6 @@ export class SentenceClickHandler {
     this.injectStyles();
     this.root.addEventListener('click', this.handleClick);
     this.root.addEventListener('mousemove', this.handleMouseMove);
-    (this.root as HTMLElement).style.cursor = 'pointer';
   }
 
   updateSentences(sentences: GlobalSentenceBoundary[]): void {
@@ -45,7 +44,6 @@ export class SentenceClickHandler {
   destroy(): void {
     this.root.removeEventListener('click', this.handleClick);
     this.root.removeEventListener('mousemove', this.handleMouseMove);
-    (this.root as HTMLElement).style.cursor = '';
     CSS.highlights.delete(HOVER_HIGHLIGHT);
     this.hoverHighlight.clear();
     this.styleEl?.remove();
@@ -57,6 +55,10 @@ export class SentenceClickHandler {
   }
 
   private handleClick = (e: Event): void => {
+    // Skip if user is selecting text (drag-select, triple-click, etc.)
+    const selection = window.getSelection();
+    if (selection && !selection.isCollapsed) return;
+
     const mouseEvent = e as MouseEvent;
 
     // Skip clicks on interactive elements
