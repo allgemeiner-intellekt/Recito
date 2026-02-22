@@ -1,33 +1,35 @@
-@keyframes ir-slide-up {
+@keyframes ir-slide-in {
   from {
-    transform: translateX(-50%) translateY(100%);
+    transform: translateY(-50%) translateX(100%);
     opacity: 0;
   }
   to {
-    transform: translateX(-50%) translateY(0);
+    transform: translateY(-50%) translateX(0);
     opacity: 1;
   }
 }
 
 .ir-player {
   position: fixed;
-  bottom: 24px;
-  left: 50%;
-  transform: translateX(-50%);
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
   z-index: 9999;
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 8px;
-  height: 48px;
-  padding: 0 16px;
-  border-radius: 24px;
+  gap: 4px;
+  width: 52px;
+  padding: 10px 8px;
+  border-radius: 26px 0 0 26px;
   background: #FFFFFF;
   border: 1px solid #E5E5E5;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+  border-right: none;
+  box-shadow: -4px 0 16px rgba(0, 0, 0, 0.08);
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   font-size: 13px;
   color: #1A1A1A;
-  animation: ir-slide-up 0.3s ease-out;
+  animation: ir-slide-in 0.3s ease-out;
   user-select: none;
 }
 
@@ -66,48 +68,41 @@
   background: #333333;
 }
 
-/* Progress bar */
+/* Circular progress ring + play button */
 .ir-progress-container {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 8px;
-  min-width: 120px;
+  gap: 2px;
 }
 
-.ir-progress-bar {
-  flex: 1;
-  height: 4px;
-  background: #E5E5E5;
-  border-radius: 2px;
-  overflow: hidden;
-  min-width: 80px;
-}
-
-.ir-progress-fill {
-  height: 100%;
-  background: #1A1A1A;
-  border-radius: 2px;
-  transition: width 0.1s linear;
-}
-
-.ir-segment-count {
-  font-size: 11px;
-  color: #888888;
-  white-space: nowrap;
-}
-
-.ir-time-display {
-  font-size: 11px;
+.ir-time-remaining {
+  font-size: 10px;
   color: #888888;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
-  min-width: 72px;
-  text-align: right;
+  text-align: center;
+}
+
+.ir-progress-ring-container {
+  position: relative;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ir-progress-ring {
+  position: absolute;
+  top: 0;
+  left: 0;
 }
 
 /* Speed control */
 .ir-speed-wrapper {
   position: relative;
+  margin-top: 4px;
 }
 
 .ir-speed-btn {
@@ -133,10 +128,10 @@
 
 .ir-speed-popup {
   position: absolute;
-  bottom: 100%;
-  left: 50%;
-  transform: translateX(-50%);
-  margin-bottom: 8px;
+  right: 100%;
+  top: 50%;
+  transform: translateY(-50%);
+  margin-right: 8px;
   padding: 12px 8px;
   background: #FFFFFF;
   border: 1px solid #E5E5E5;
@@ -187,21 +182,20 @@
 /* Error toast */
 @keyframes ir-toast-in {
   from {
-    transform: translateY(8px);
+    transform: translateX(8px);
     opacity: 0;
   }
   to {
-    transform: translateY(0);
+    transform: translateX(0);
     opacity: 1;
   }
 }
 
 .ir-error-toast {
   position: absolute;
-  bottom: 100%;
-  left: 50%;
-  transform: translateX(-50%);
-  margin-bottom: 12px;
+  right: 100%;
+  top: 0;
+  margin-right: 12px;
   padding: 10px 14px;
   background: #FEF2F2;
   border: 1px solid #FECACA;

@@ -42,8 +42,6 @@ export function FloatingPlayer({
   playback,
   error,
   onTogglePause,
-  onSkipForward,
-  onSkipBack,
   onStop,
   onRetry,
   onDismissError,
@@ -84,14 +82,12 @@ export function FloatingPlayer({
           <button className="ir-error-toast-dismiss" onClick={onDismissError}>&times;</button>
         </div>
       )}
-      <PlayerControls
+      <ProgressBar
+        playback={playback}
         isPaused={playback.isPaused}
         onTogglePause={onTogglePause}
-        onSkipForward={onSkipForward}
-        onSkipBack={onSkipBack}
-        onStop={onStop}
       />
-      <ProgressBar playback={playback} />
+      <PlayerControls onStop={onStop} />
       <SpeedControl />
     </div>
   );

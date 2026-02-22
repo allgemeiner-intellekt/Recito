@@ -28,5 +28,5 @@ export const AUTOSCROLL_TARGET_RATIO = 0.3;
 
 export const PARAGRAPH_MIN_WORDS = 20;
 
-export const PLAYER_HEIGHT = 48;
-export const PLAYER_BORDER_RADIUS = 24;
+export const PLAYER_WIDTH = 52;
+export const PLAYER_BORDER_RADIUS = 26;
