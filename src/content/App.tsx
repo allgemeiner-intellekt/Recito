@@ -28,6 +28,7 @@ export function App({ shadowRoot }: AppProps) {
   const sentenceClickHandlerRef = useRef<SentenceClickHandler | null>(null);
   const globalSentencesRef = useRef<GlobalSentenceBoundary[]>([]);
   const totalWordsRef = useRef(0);
+  const pendingAdvanceRef = useRef(false);
 
   const getSettings = useCallback(() => useStore.getState().settings, []);
 
@@ -71,6 +72,7 @@ export function App({ shadowRoot }: AppProps) {
     sentenceClickHandlerRef.current?.destroy();
     sentenceClickHandlerRef.current = null;
     globalSentencesRef.current = [];
+    pendingAdvanceRef.current = false;
     useStore.getState().setError(null);
     setPlayback({
       isPlaying: false,
@@ -140,6 +142,7 @@ export function App({ shadowRoot }: AppProps) {
   const jumpToSentence = useCallback((sentence: GlobalSentenceBoundary) => {
     const store = useStore.getState();
     if (!store.playback.isPlaying) return;
+    pendingAdvanceRef.current = false;
 
     const segs = store.segments;
     const { currentSegmentIndex } = store.playback;
@@ -161,6 +164,12 @@ export function App({ shadowRoot }: AppProps) {
           seekTime = wt.startTime;
           break;
         }
+      }
+
+      // If paused, resume playback so audio actually plays after seeking
+      if (store.playback.isPaused) {
+        chrome.runtime.sendMessage({ type: MSG.RESUME }).catch(console.error);
+        setPlayback({ isPaused: false });
       }
 
       chrome.runtime.sendMessage({
@@ -193,6 +202,7 @@ export function App({ shadowRoot }: AppProps) {
         : 0;
 
       setPlayback({
+        isPaused: false,
         currentSegmentIndex: targetIndex,
         segmentProgress: 0,
         currentTime: 0,
@@ -211,6 +221,7 @@ export function App({ shadowRoot }: AppProps) {
 
   const startReading = useCallback((fromSegmentIndex = 0, sourceElement?: Element) => {
     const store = useStore.getState();
+    pendingAdvanceRef.current = false;
 
     // Clean up local UI — don't send STOP to offscreen because it races
     // with the PLAY_SEGMENT we're about to send. The offscreen's
@@ -334,7 +345,11 @@ export function App({ shadowRoot }: AppProps) {
             console.warn('Ignoring stale SEGMENT_COMPLETE for segment', message.segmentId);
             return false;
           }
-          advanceToNextSegment();
+          if (store.playback.isPaused) {
+            pendingAdvanceRef.current = true;
+          } else {
+            advanceToNextSegment();
+          }
           return false;
         }
 
@@ -416,13 +431,18 @@ export function App({ shadowRoot }: AppProps) {
   const togglePause = useCallback(() => {
     const store = useStore.getState();
     if (store.playback.isPaused) {
-      chrome.runtime.sendMessage({ type: MSG.RESUME }).catch(console.error);
       setPlayback({ isPaused: false });
+      if (pendingAdvanceRef.current) {
+        pendingAdvanceRef.current = false;
+        advanceToNextSegment();
+      } else {
+        chrome.runtime.sendMessage({ type: MSG.RESUME }).catch(console.error);
+      }
     } else {
       chrome.runtime.sendMessage({ type: MSG.PAUSE }).catch(console.error);
       setPlayback({ isPaused: true });
     }
-  }, [setPlayback]);
+  }, [setPlayback, advanceToNextSegment]);
 
   const skipForward = useCallback(() => {
     advanceToNextSegment();
