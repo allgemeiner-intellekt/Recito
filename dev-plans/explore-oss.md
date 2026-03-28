@@ -188,6 +188,42 @@ This is our design benchmark. Not open source, but we study it as a user:
 
 ---
 
+## Directory Structure
+
+```
+/reference/                          ← gitignored, lives at repo root
+├── cloned/                          ← full repo clones for deep-dive
+│   ├── read-aloud/
+│   ├── fetch-stream-audio/
+│   ├── RealtimeTTS/
+│   └── omnivore/
+├── oss-reviews/                     ← our review notes (one .md per project)
+│   ├── read-aloud.md
+│   ├── speechy.md
+│   ├── js-tts-wrapper.md
+│   ├── fetch-stream-audio.md
+│   ├── realtimetss.md
+│   ├── howlerjs.md
+│   ├── react-speech-highlight.md
+│   ├── talkify.md
+│   ├── omnivore.md
+│   └── framework-spike.md          ← Plasmo vs WXT vs CRXJS comparison
+├── framework-spike/                 ← hello-world test projects
+│   ├── plasmo-test/
+│   ├── wxt-test/
+│   └── crxjs-test/
+└── speechify-reference/             ← screenshots & UX notes from Speechify
+```
+
+**Clone strategy:**
+- **Clone locally** (need to grep/trace code paths): Read Aloud, fetch-stream-audio, RealtimeTTS, Omnivore
+- **Read on GitHub** (small or focused review): Speechy, js-tts-wrapper, inject-react-anywhere, react-speech-highlight, Talkify, howler.js
+- **Framework spike** (scaffold hello-world, not clone): Plasmo, WXT, CRXJS
+
+All clones go into `/reference/cloned/` which is gitignored. Review notes go into `/reference/oss-reviews/`.
+
+---
+
 ## Execution Order
 
 ```
@@ -215,7 +251,7 @@ Week 4+ (before Plan 08):
 
 ## Deliverables per Review
 
-For each project reviewed, produce a short note (in `/docs/oss-reviews/`) with:
+For each project reviewed, produce a short note (in `/reference/oss-reviews/`) with:
 
 1. **Architecture sketch** — how the relevant subsystem is structured
 2. **Reusable patterns** — specific code patterns or algorithms we should adopt
