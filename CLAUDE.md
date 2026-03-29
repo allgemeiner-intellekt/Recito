@@ -5,3 +5,5 @@ This project is a Chrome extension that inspired by Speechify(https://chromewebs
 Speechify is great, but do not support BYOK, which make it unable to be integrated with great suppliers like Groq, ElevenLabs, and other OpenAI compitable.
 
 This project - Immersive Reader, is about to make an open-source Speechify with BYOK support.
+
+You can find references in ./reference/oss-reviews
