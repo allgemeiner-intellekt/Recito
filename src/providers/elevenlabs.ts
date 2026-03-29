@@ -56,14 +56,15 @@ export const elevenlabsProvider: TTSProvider = {
       body: JSON.stringify(body),
     });
 
-    if (response.status === 401) {
-      throw new Error('Invalid API key. Please check your ElevenLabs API key.');
-    }
-    if (response.status === 429) {
-      throw new Error('Rate limit exceeded. Please try again later.');
-    }
     if (!response.ok) {
-      throw new Error(`ElevenLabs TTS request failed: ${response.status} ${response.statusText}`);
+      const errBody = await response.text().catch(() => '');
+      if (response.status === 401) {
+        throw new Error('Invalid API key. Please check your ElevenLabs API key.');
+      }
+      if (response.status === 429) {
+        throw new Error('Rate limit exceeded. Please try again later.');
+      }
+      throw new Error(`ElevenLabs TTS error ${response.status}: ${errBody || response.statusText}`);
     }
 
     const audioData = await response.arrayBuffer();

@@ -1,4 +1,5 @@
 import { MSG, type ExtensionMessage } from '@shared/messages';
+import type { ProviderConfig } from '@shared/types';
 import { ensureOffscreenDocument } from './offscreen-manager';
 import {
   startPlayback,
@@ -9,18 +10,12 @@ import {
   skipBackward,
   setSpeed,
   setVolume,
-  setActiveTab,
   getActiveTab,
   handlePlaybackProgress,
 } from './orchestrator';
 import { playbackState } from './playback-state';
-
-const OFFSCREEN_TO_CONTENT: Set<string> = new Set([
-  MSG.PLAYBACK_PROGRESS,
-  MSG.CHUNK_COMPLETE,
-  MSG.PLAYBACK_ERROR,
-  MSG.WORD_TIMING,
-]);
+import { getProvider } from '@providers/registry';
+import { getProviders, setActiveProvider } from '@shared/storage';
 
 export async function routeMessage(
   message: ExtensionMessage,
@@ -28,11 +23,6 @@ export async function routeMessage(
   sendResponse: (response?: unknown) => void,
 ): Promise<void> {
   try {
-    // Track active tab from content script messages
-    if (sender.tab?.id != null) {
-      setActiveTab(sender.tab.id);
-    }
-
     switch (message.type) {
       // === Transport controls (from popup/content/toolbar) ===
       case MSG.PLAY: {
@@ -58,12 +48,7 @@ export async function routeMessage(
       }
 
       case MSG.PAUSE:
-        if (sender.tab?.id || !getActiveTab()) {
-          // From content script or no active playback → forward to offscreen
-          pausePlayback();
-        } else {
-          pausePlayback();
-        }
+        pausePlayback();
         sendResponse({ ok: true });
         break;
 
@@ -101,15 +86,7 @@ export async function routeMessage(
         sendResponse(playbackState.getState());
         break;
 
-      // === Audio pipeline messages to offscreen ===
-      case MSG.PLAY_AUDIO:
-      case MSG.PREFETCH_AUDIO:
-        await ensureOffscreenDocument();
-        chrome.runtime.sendMessage(message).catch(console.error);
-        sendResponse({ ok: true });
-        break;
-
-      // === Offscreen → Content: relay progress/completion/errors ===
+      // === Offscreen → SW: relay progress/completion/errors to content script ===
       case MSG.PLAYBACK_PROGRESS: {
         handlePlaybackProgress(message.currentTime, message.duration, message.chunkIndex);
         const tabId = getActiveTab();
@@ -145,14 +122,51 @@ export async function routeMessage(
         break;
       }
 
-      // === Provider management ===
-      case MSG.LIST_VOICES:
-      case MSG.VALIDATE_KEY:
-      case MSG.SET_ACTIVE_PROVIDER:
-      case MSG.SYNTHESIZE:
-        // These are handled directly in the service worker
-        sendResponse({ ok: true });
+      // === Provider management — actually execute provider operations ===
+      case MSG.VALIDATE_KEY: {
+        try {
+          const provider = getProvider(message.config.providerId);
+          const isValid = await provider.validateKey(message.config);
+          sendResponse(isValid);
+        } catch (err) {
+          sendResponse(false);
+        }
         break;
+      }
+
+      case MSG.LIST_VOICES: {
+        try {
+          // providerId here is the config ID, find the actual config
+          const providers = await getProviders();
+          const config = providers.find((p) => p.id === message.providerId);
+          if (!config) {
+            sendResponse({ error: 'Provider config not found' });
+            break;
+          }
+          const provider = getProvider(config.providerId);
+          const voices = await provider.listVoices(config);
+          sendResponse(voices);
+        } catch (err) {
+          sendResponse({ error: err instanceof Error ? err.message : String(err) });
+        }
+        break;
+      }
+
+      case MSG.SET_ACTIVE_PROVIDER: {
+        try {
+          await setActiveProvider(message.configId);
+          sendResponse({ ok: true });
+        } catch (err) {
+          sendResponse({ error: String(err) });
+        }
+        break;
+      }
+
+      case MSG.SYNTHESIZE: {
+        // Not used directly (orchestrator handles synthesis internally)
+        sendResponse({ error: 'Use PLAY to start playback' });
+        break;
+      }
 
       default:
         sendResponse({ error: 'Unknown message type' });

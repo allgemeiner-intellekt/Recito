@@ -129,12 +129,15 @@ export function extractGeneric(): ExtractionResult | null {
     const clone = document.cloneNode(true) as Document;
     const article = new Readability(clone).parse();
     if (article && article.textContent && wordCount(article.textContent) > 30) {
+      // Find the live DOM element that best matches the extracted article
+      // (Readability works on a clone, so we need to find the corresponding live element)
+      const liveRoot = findArticleRoot();
       return {
         title: article.title,
         html: article.content,
         textContent: article.textContent,
         wordCount: wordCount(article.textContent),
-        sourceElement: null, // Readability works on a clone, no live element
+        sourceElement: liveRoot ?? document.body,
       };
     }
   } catch {
@@ -145,7 +148,7 @@ export function extractGeneric(): ExtractionResult | null {
   const root = findArticleRoot();
   if (!root) return null;
 
-  // Clone root and strip noise
+  // Clone root and strip noise for text extraction
   const cleanRoot = root.cloneNode(true) as Element;
   stripNoise(cleanRoot);
 
@@ -157,6 +160,6 @@ export function extractGeneric(): ExtractionResult | null {
     html: cleanRoot.innerHTML,
     textContent,
     wordCount: wordCount(textContent),
-    sourceElement: root,
+    sourceElement: root, // live DOM element for highlighting
   };
 }

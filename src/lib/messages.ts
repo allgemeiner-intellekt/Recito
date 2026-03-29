@@ -1,4 +1,4 @@
-import type { ProviderConfig, Voice, PlaybackState, PageInfo, AppSettings } from './types';
+import type { ProviderConfig, Voice, PlaybackState, AppSettings } from './types';
 
 export const MSG = {
   // Transport controls (content/popup → SW → offscreen)
@@ -12,9 +12,13 @@ export const MSG = {
   SET_VOLUME: 'SET_VOLUME',
   GET_STATE: 'GET_STATE',
 
-  // Audio pipeline (SW → offscreen)
-  PLAY_AUDIO: 'PLAY_AUDIO',
-  PREFETCH_AUDIO: 'PREFETCH_AUDIO',
+  // Offscreen audio commands (SW → offscreen)
+  OFFSCREEN_PLAY: 'OFFSCREEN_PLAY',
+  OFFSCREEN_PAUSE: 'OFFSCREEN_PAUSE',
+  OFFSCREEN_RESUME: 'OFFSCREEN_RESUME',
+  OFFSCREEN_STOP: 'OFFSCREEN_STOP',
+  OFFSCREEN_SET_SPEED: 'OFFSCREEN_SET_SPEED',
+  OFFSCREEN_SET_VOLUME: 'OFFSCREEN_SET_VOLUME',
 
   // Playback events (offscreen → SW → content)
   PLAYBACK_PROGRESS: 'PLAYBACK_PROGRESS',
@@ -83,20 +87,35 @@ export interface GetStateMessage {
   type: typeof MSG.GET_STATE;
 }
 
-// --- Audio Pipeline Messages ---
+// --- Offscreen Audio Messages (use base64 since ArrayBuffer can't be serialized) ---
 
-export interface PlayAudioMessage {
-  type: typeof MSG.PLAY_AUDIO;
-  audioData: ArrayBuffer;
+export interface OffscreenPlayMessage {
+  type: typeof MSG.OFFSCREEN_PLAY;
+  audioBase64: string;
   chunkIndex: number;
   format: string;
 }
 
-export interface PrefetchAudioMessage {
-  type: typeof MSG.PREFETCH_AUDIO;
-  audioData: ArrayBuffer;
-  chunkIndex: number;
-  format: string;
+export interface OffscreenPauseMessage {
+  type: typeof MSG.OFFSCREEN_PAUSE;
+}
+
+export interface OffscreenResumeMessage {
+  type: typeof MSG.OFFSCREEN_RESUME;
+}
+
+export interface OffscreenStopMessage {
+  type: typeof MSG.OFFSCREEN_STOP;
+}
+
+export interface OffscreenSetSpeedMessage {
+  type: typeof MSG.OFFSCREEN_SET_SPEED;
+  speed: number;
+}
+
+export interface OffscreenSetVolumeMessage {
+  type: typeof MSG.OFFSCREEN_SET_VOLUME;
+  volume: number;
 }
 
 // --- Playback Event Messages ---
@@ -191,8 +210,12 @@ export type ExtensionMessage =
   | SetSpeedMessage
   | SetVolumeMessage
   | GetStateMessage
-  | PlayAudioMessage
-  | PrefetchAudioMessage
+  | OffscreenPlayMessage
+  | OffscreenPauseMessage
+  | OffscreenResumeMessage
+  | OffscreenStopMessage
+  | OffscreenSetSpeedMessage
+  | OffscreenSetVolumeMessage
   | PlaybackProgressMessage
   | ChunkCompleteMessage
   | PlaybackErrorMessage

@@ -6,7 +6,13 @@ interface SimpleWordTiming {
   endTime: number;
 }
 
-let timingInterval: ReturnType<typeof setInterval> | null = null;
+// State for the current chunk's word timing
+let currentTabId: number | null = null;
+let currentChunkIndex = -1;
+let currentWords: string[] = [];
+let currentWordIndex = 0;
+let currentRealTimings: SimpleWordTiming[] | null = null;
+let audioDuration = 0;
 
 export function startWordTimingRelay(
   tabId: number,
@@ -16,84 +22,82 @@ export function startWordTimingRelay(
 ): void {
   stopWordTimingRelay();
 
+  currentTabId = tabId;
+  currentChunkIndex = chunkIndex;
+  currentWords = chunkText.split(/\s+/).filter(Boolean);
+  currentWordIndex = 0;
+  audioDuration = 0;
+
   if (realTimings && realTimings.length > 0) {
-    relayRealTimings(tabId, chunkIndex, realTimings);
+    currentRealTimings = realTimings;
   } else {
-    relayInterpolatedTimings(tabId, chunkIndex, chunkText);
+    currentRealTimings = null;
   }
 }
 
 export function stopWordTimingRelay(): void {
-  if (timingInterval) {
-    clearInterval(timingInterval);
-    timingInterval = null;
-  }
+  currentTabId = null;
+  currentChunkIndex = -1;
+  currentWords = [];
+  currentWordIndex = 0;
+  currentRealTimings = null;
+  audioDuration = 0;
 }
 
-function relayRealTimings(
-  tabId: number,
+/**
+ * Called by the orchestrator when a PLAYBACK_PROGRESS message arrives from the offscreen player.
+ * This drives word highlighting in sync with actual audio playback.
+ */
+export function onPlaybackProgress(
   chunkIndex: number,
-  timings: SimpleWordTiming[],
+  currentTime: number,
+  duration: number,
 ): void {
-  let wordIndex = 0;
-  const startTime = Date.now();
+  if (chunkIndex !== currentChunkIndex || !currentTabId || currentWords.length === 0) {
+    return;
+  }
 
-  timingInterval = setInterval(() => {
-    if (wordIndex >= timings.length) {
-      stopWordTimingRelay();
-      return;
-    }
+  if (duration > 0) {
+    audioDuration = duration;
+  }
 
-    const elapsed = (Date.now() - startTime) / 1000;
-    while (wordIndex < timings.length && timings[wordIndex].startTime <= elapsed) {
-      const timing = timings[wordIndex];
-      sendTabMessage(tabId, {
+  if (currentRealTimings) {
+    // Use real timings — advance words whose startTime has been reached
+    while (
+      currentWordIndex < currentRealTimings.length &&
+      currentRealTimings[currentWordIndex].startTime <= currentTime
+    ) {
+      const timing = currentRealTimings[currentWordIndex];
+      sendTabMessage(currentTabId, {
         type: MSG.WORD_TIMING,
-        chunkIndex,
-        wordIndex,
+        chunkIndex: currentChunkIndex,
+        wordIndex: currentWordIndex,
         word: timing.word,
         startTime: timing.startTime,
         endTime: timing.endTime,
       }).catch(() => {});
-      wordIndex++;
+      currentWordIndex++;
     }
-  }, 50);
-}
+  } else if (audioDuration > 0) {
+    // Interpolate based on actual audio duration and current playback time
+    const progress = currentTime / audioDuration;
+    const expectedWordIndex = Math.min(
+      Math.floor(progress * currentWords.length),
+      currentWords.length - 1,
+    );
 
-function relayInterpolatedTimings(
-  tabId: number,
-  chunkIndex: number,
-  chunkText: string,
-): void {
-  const words = chunkText.split(/\s+/).filter(Boolean);
-  if (words.length === 0) return;
+    const wordDuration = audioDuration / currentWords.length;
 
-  // Estimate duration: ~150ms per word at 1x speed
-  const estimatedDurationMs = words.length * 150;
-  const wordDuration = estimatedDurationMs / words.length / 1000;
-
-  let wordIndex = 0;
-  const startTime = Date.now();
-
-  timingInterval = setInterval(() => {
-    if (wordIndex >= words.length) {
-      stopWordTimingRelay();
-      return;
-    }
-
-    const elapsed = (Date.now() - startTime) / 1000;
-    const expectedWordIndex = Math.floor(elapsed / wordDuration);
-
-    while (wordIndex <= Math.min(expectedWordIndex, words.length - 1)) {
-      sendTabMessage(tabId, {
+    while (currentWordIndex <= expectedWordIndex) {
+      sendTabMessage(currentTabId, {
         type: MSG.WORD_TIMING,
-        chunkIndex,
-        wordIndex,
-        word: words[wordIndex],
-        startTime: wordIndex * wordDuration,
-        endTime: (wordIndex + 1) * wordDuration,
+        chunkIndex: currentChunkIndex,
+        wordIndex: currentWordIndex,
+        word: currentWords[currentWordIndex],
+        startTime: currentWordIndex * wordDuration,
+        endTime: (currentWordIndex + 1) * wordDuration,
       }).catch(() => {});
-      wordIndex++;
+      currentWordIndex++;
     }
-  }, 50);
+  }
 }

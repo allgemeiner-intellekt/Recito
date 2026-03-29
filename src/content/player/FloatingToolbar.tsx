@@ -24,6 +24,7 @@ export function FloatingToolbar() {
     toolbarVisible,
     toolbarExpanded,
     providerName,
+    play,
     pause,
     resume,
     stop,
@@ -45,8 +46,10 @@ export function FloatingToolbar() {
   const handlePlayPause = () => {
     if (isPlaying) {
       pause();
-    } else {
+    } else if (playbackStatus === 'paused') {
       resume();
+    } else {
+      play();
     }
   };
 

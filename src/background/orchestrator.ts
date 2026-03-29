@@ -1,15 +1,15 @@
 import { MSG, sendTabMessage, type ExtensionMessage } from '@shared/messages';
-import type { TextChunk, Voice } from '@shared/types';
+import type { TextChunk } from '@shared/types';
 import { getProvider } from '@providers/registry';
 import { getActiveProvider, getSettings } from '@shared/storage';
 import { playbackState } from './playback-state';
 import { ensureOffscreenDocument } from './offscreen-manager';
-import { startWordTimingRelay, stopWordTimingRelay } from './word-timing';
+import { startWordTimingRelay, stopWordTimingRelay, onPlaybackProgress } from './word-timing';
 import { LOOKAHEAD_BUFFER_SIZE } from '@shared/constants';
 
 interface SynthesizedChunk {
   chunkIndex: number;
-  audioData: ArrayBuffer;
+  audioBase64: string;
   format: string;
   wordTimings?: Array<{ word: string; startTime: number; endTime: number }>;
 }
@@ -26,6 +26,38 @@ export function getActiveTab(): number | null {
   return activeTabId;
 }
 
+// Convert ArrayBuffer to base64 string for Chrome message passing
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
+  let binary = '';
+  for (let i = 0; i < bytes.byteLength; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary);
+}
+
+// Send a message to the offscreen document (uses OFFSCREEN_ prefix to avoid routing loops)
+async function sendToOffscreen(message: Record<string, unknown>): Promise<void> {
+  await ensureOffscreenDocument();
+  chrome.runtime.sendMessage(message).catch(console.error);
+}
+
+// Ensure the content script is injected into the tab
+async function ensureContentScript(tabId: number): Promise<void> {
+  try {
+    // Try pinging the content script
+    await chrome.tabs.sendMessage(tabId, { type: MSG.GET_PAGE_INFO });
+  } catch {
+    // Content script not loaded — inject it
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      files: ['src/content/index.tsx'],
+    });
+    // Wait briefly for it to initialize
+    await new Promise((r) => setTimeout(r, 300));
+  }
+}
+
 export async function startPlayback(tabId: number, fromSelection = false): Promise<void> {
   // Abort any ongoing playback
   stopPlayback();
@@ -34,17 +66,34 @@ export async function startPlayback(tabId: number, fromSelection = false): Promi
 
   playbackState.setStatus('loading');
 
+  // Ensure content script is available
+  try {
+    await ensureContentScript(tabId);
+  } catch (err) {
+    playbackState.setStatus('idle');
+    console.error('Cannot inject content script:', err);
+    return;
+  }
+
   // Step 1: Extract content from the page
-  const extractResult = await sendTabMessage<{
+  let extractResult: {
     title?: string;
     wordCount?: number;
     totalChunks?: number;
     error?: string;
-  }>(tabId, { type: MSG.EXTRACT_CONTENT, fromSelection });
+  };
+  try {
+    extractResult = await sendTabMessage(tabId, { type: MSG.EXTRACT_CONTENT, fromSelection });
+  } catch (err) {
+    playbackState.setStatus('idle');
+    console.error('Failed to extract content:', err);
+    return;
+  }
 
   if (extractResult.error || !extractResult.totalChunks) {
     playbackState.setStatus('idle');
-    throw new Error(extractResult.error ?? 'No content to read');
+    console.error('Extraction failed:', extractResult.error ?? 'No content');
+    return;
   }
 
   playbackState.update({
@@ -59,15 +108,14 @@ export async function startPlayback(tabId: number, fromSelection = false): Promi
 export async function resumePlayback(): Promise<void> {
   if (playbackState.getStatus() !== 'paused') return;
   playbackState.setStatus('playing');
-  await ensureOffscreenDocument();
-  chrome.runtime.sendMessage({ type: MSG.RESUME }).catch(console.error);
+  await sendToOffscreen({ type: MSG.OFFSCREEN_RESUME });
 }
 
 export function pausePlayback(): void {
   if (playbackState.getStatus() !== 'playing') return;
   playbackState.setStatus('paused');
   stopWordTimingRelay();
-  chrome.runtime.sendMessage({ type: MSG.PAUSE }).catch(console.error);
+  sendToOffscreen({ type: MSG.OFFSCREEN_PAUSE }).catch(() => {});
 }
 
 export function stopPlayback(): void {
@@ -76,7 +124,7 @@ export function stopPlayback(): void {
   prefetchCache.clear();
   stopWordTimingRelay();
   playbackState.reset();
-  chrome.runtime.sendMessage({ type: MSG.STOP }).catch(() => {});
+  sendToOffscreen({ type: MSG.OFFSCREEN_STOP }).catch(() => {});
 }
 
 export async function skipForward(): Promise<void> {
@@ -101,11 +149,9 @@ async function skipToChunk(chunkIndex: number): Promise<void> {
   if (!activeTabId) return;
   const state = playbackState.getState();
 
-  // Stop current audio
   stopWordTimingRelay();
-  chrome.runtime.sendMessage({ type: MSG.STOP }).catch(() => {});
+  await sendToOffscreen({ type: MSG.OFFSCREEN_STOP });
 
-  // Reset abort for the new sequence
   abortController?.abort();
   abortController = new AbortController();
 
@@ -115,12 +161,12 @@ async function skipToChunk(chunkIndex: number): Promise<void> {
 
 export function setSpeed(speed: number): void {
   playbackState.update({ speed });
-  chrome.runtime.sendMessage({ type: MSG.SET_SPEED, speed }).catch(() => {});
+  sendToOffscreen({ type: MSG.OFFSCREEN_SET_SPEED, speed }).catch(() => {});
 }
 
 export function setVolume(volume: number): void {
   playbackState.update({ volume });
-  chrome.runtime.sendMessage({ type: MSG.SET_VOLUME, volume }).catch(() => {});
+  sendToOffscreen({ type: MSG.OFFSCREEN_SET_VOLUME, volume }).catch(() => {});
 }
 
 async function playChunksSequentially(
@@ -146,8 +192,8 @@ async function playChunksSequentially(
         synthesized = await synthesizeChunk(tabId, i);
       } catch (err) {
         if (signal?.aborted) return;
-        // Notify content script of error
         const errorMsg = err instanceof Error ? err.message : String(err);
+        console.error('Synthesis error:', errorMsg);
         if (activeTabId) {
           sendTabMessage(activeTabId, {
             type: MSG.PLAYBACK_ERROR,
@@ -172,29 +218,29 @@ async function playChunksSequentially(
               prefetchCache.set(prefetchIndex, result);
             }
           })
-          .catch(() => {
-            // Prefetch failures are non-fatal
-          });
+          .catch(() => {});
       }
     }
 
-    // Send audio to offscreen for playback
-    await ensureOffscreenDocument();
+    // Send audio to offscreen as base64 (ArrayBuffer can't be serialized in Chrome messages)
     playbackState.setStatus('playing');
-    chrome.runtime
-      .sendMessage({
-        type: MSG.PLAY_AUDIO,
-        audioData: synthesized.audioData,
-        chunkIndex: i,
-        format: synthesized.format,
-      })
-      .catch(console.error);
+    await sendToOffscreen({
+      type: MSG.OFFSCREEN_PLAY,
+      audioBase64: synthesized.audioBase64,
+      chunkIndex: i,
+      format: synthesized.format,
+    });
 
     // Start word timing relay for this chunk
-    const chunkResult = await sendTabMessage<TextChunk>(tabId, {
-      type: MSG.GET_CHUNK,
-      index: i,
-    });
+    let chunkResult: TextChunk | null = null;
+    try {
+      chunkResult = await sendTabMessage<TextChunk>(tabId, {
+        type: MSG.GET_CHUNK,
+        index: i,
+      });
+    } catch {
+      // Content script may not respond
+    }
     if (chunkResult && 'text' in chunkResult) {
       startWordTimingRelay(tabId, i, chunkResult.text, synthesized.wordTimings);
     }
@@ -223,7 +269,7 @@ async function synthesizeChunk(tabId: number, chunkIndex: number): Promise<Synth
   // Get active provider and voice
   const providerConfig = await getActiveProvider();
   if (!providerConfig) {
-    throw new Error('No TTS provider configured. Please add one in settings.');
+    throw new Error('No TTS provider configured. Please add one in Settings.');
   }
 
   const settings = await getSettings();
@@ -245,7 +291,7 @@ async function synthesizeChunk(tabId: number, chunkIndex: number): Promise<Synth
 
   return {
     chunkIndex,
-    audioData: result.audioData,
+    audioBase64: arrayBufferToBase64(result.audioData),
     format: result.format,
     wordTimings: result.wordTimings,
   };
@@ -262,10 +308,18 @@ function waitForChunkComplete(
     }
 
     const listener = (message: ExtensionMessage) => {
-      if (message.type === MSG.CHUNK_COMPLETE && 'chunkIndex' in message && message.chunkIndex === chunkIndex) {
+      if (
+        message.type === MSG.CHUNK_COMPLETE &&
+        'chunkIndex' in message &&
+        message.chunkIndex === chunkIndex
+      ) {
         chrome.runtime.onMessage.removeListener(listener);
         resolve();
-      } else if (message.type === MSG.PLAYBACK_ERROR && 'chunkIndex' in message && message.chunkIndex === chunkIndex) {
+      } else if (
+        message.type === MSG.PLAYBACK_ERROR &&
+        'chunkIndex' in message &&
+        message.chunkIndex === chunkIndex
+      ) {
         chrome.runtime.onMessage.removeListener(listener);
         resolve();
       }
@@ -281,12 +335,18 @@ function waitForChunkComplete(
 }
 
 // Handle progress messages from offscreen
-export function handlePlaybackProgress(currentTime: number, duration: number, chunkIndex: number): void {
+export function handlePlaybackProgress(
+  currentTime: number,
+  duration: number,
+  chunkIndex: number,
+): void {
   if (playbackState.getState().currentChunkIndex === chunkIndex) {
     playbackState.update({
       currentTime,
       duration,
       chunkProgress: duration > 0 ? currentTime / duration : 0,
     });
+    // Drive word highlighting from real playback progress
+    onPlaybackProgress(chunkIndex, currentTime, duration);
   }
 }

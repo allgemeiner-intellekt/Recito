@@ -80,9 +80,8 @@ async function handleMessage(message: ExtensionMessage): Promise<unknown> {
       const settings = await getSettings();
       highlightManager?.destroy();
       highlightManager = new HighlightManager(settings.highlight);
-      if (sourceEl) {
-        highlightManager.init(sourceEl);
-      }
+      // Always init highlighting — fallback to document.body if no source element
+      highlightManager.init(sourceEl ?? document.body);
 
       if (settings.highlight.autoScroll) {
         initAutoScroll();

@@ -3,27 +3,19 @@ import type { TTSProvider, ProviderConfig, Voice, SynthesisResult, SynthesisOpti
 const DEFAULT_BASE_URL = 'https://api.groq.com/openai';
 
 const GROQ_VOICES: Voice[] = [
-  { id: 'Arista-PlayAI', name: 'Arista' },
-  { id: 'Atlas-PlayAI', name: 'Atlas' },
-  { id: 'Basil-PlayAI', name: 'Basil' },
-  { id: 'Briggs-PlayAI', name: 'Briggs' },
-  { id: 'Calum-PlayAI', name: 'Calum' },
-  { id: 'Celeste-PlayAI', name: 'Celeste' },
-  { id: 'Cheyenne-PlayAI', name: 'Cheyenne' },
-  { id: 'Chip-PlayAI', name: 'Chip' },
-  { id: 'Cillian-PlayAI', name: 'Cillian' },
-  { id: 'Daphne-PlayAI', name: 'Daphne' },
-  { id: 'Fritz-PlayAI', name: 'Fritz' },
-  { id: 'Gail-PlayAI', name: 'Gail' },
-  { id: 'Indigo-PlayAI', name: 'Indigo' },
-  { id: 'Mamaw-PlayAI', name: 'Mamaw' },
-  { id: 'Mason-PlayAI', name: 'Mason' },
-  { id: 'Mikail-PlayAI', name: 'Mikail' },
-  { id: 'Mitch-PlayAI', name: 'Mitch' },
-  { id: 'Nia-PlayAI', name: 'Nia' },
-  { id: 'Quinn-PlayAI', name: 'Quinn' },
-  { id: 'Thunder-PlayAI', name: 'Thunder' },
+  { id: 'autumn', name: 'Autumn', language: 'en' },
+  { id: 'diana', name: 'Diana', language: 'en' },
+  { id: 'hannah', name: 'Hannah', language: 'en' },
+  { id: 'austin', name: 'Austin', language: 'en' },
+  { id: 'daniel', name: 'Daniel', language: 'en' },
+  { id: 'troy', name: 'Troy', language: 'en' },
+  { id: 'fahad', name: 'Fahad', language: 'ar-SA' },
+  { id: 'sultan', name: 'Sultan', language: 'ar-SA' },
+  { id: 'lulwa', name: 'Lulwa', language: 'ar-SA' },
+  { id: 'noura', name: 'Noura', language: 'ar-SA' },
 ];
+
+const DEFAULT_MODEL = 'canopylabs/orpheus-v1-english';
 
 export const groqProvider: TTSProvider = {
   id: 'groq',
@@ -40,9 +32,22 @@ export const groqProvider: TTSProvider = {
     options?: SynthesisOptions,
   ): Promise<SynthesisResult> {
     const baseUrl = config.baseUrl || DEFAULT_BASE_URL;
-    const speed = options?.speed ?? 1.0;
-    const format = options?.format ?? 'mp3';
-    const model = (config.extraParams?.model as string) ?? 'playai-tts';
+
+    // Pick model based on voice language
+    const isArabic = voice.language === 'ar-SA';
+    const defaultModel = isArabic ? 'canopylabs/orpheus-arabic-saudi' : DEFAULT_MODEL;
+    const model = (config.extraParams?.model as string) ?? defaultModel;
+
+    const body: Record<string, unknown> = {
+      model,
+      input: text,
+      voice: voice.id,
+      response_format: 'wav',
+    };
+
+    if (options?.speed && options.speed !== 1.0) {
+      body.speed = options.speed;
+    }
 
     const response = await fetch(`${baseUrl}/v1/audio/speech`, {
       method: 'POST',
@@ -50,27 +55,22 @@ export const groqProvider: TTSProvider = {
         'Authorization': `Bearer ${config.apiKey}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        model,
-        input: text,
-        voice: voice.id,
-        response_format: format,
-        speed,
-      }),
+      body: JSON.stringify(body),
     });
 
-    if (response.status === 401) {
-      throw new Error('Invalid API key. Please check your Groq API key.');
-    }
-    if (response.status === 429) {
-      throw new Error('Rate limit exceeded. Please try again later.');
-    }
     if (!response.ok) {
-      throw new Error(`Groq TTS request failed: ${response.status} ${response.statusText}`);
+      const errBody = await response.text().catch(() => '');
+      if (response.status === 401) {
+        throw new Error('Invalid API key. Please check your Groq API key.');
+      }
+      if (response.status === 429) {
+        throw new Error('Rate limit exceeded. Please try again later.');
+      }
+      throw new Error(`Groq TTS error ${response.status}: ${errBody || response.statusText}`);
     }
 
     const audioData = await response.arrayBuffer();
-    return { audioData, format };
+    return { audioData, format: 'wav' };
   },
 
   async validateKey(config: ProviderConfig): Promise<boolean> {

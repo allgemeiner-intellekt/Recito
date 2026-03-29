@@ -44,14 +44,15 @@ export const openaiProvider: TTSProvider = {
       }),
     });
 
-    if (response.status === 401) {
-      throw new Error('Invalid API key. Please check your OpenAI API key.');
-    }
-    if (response.status === 429) {
-      throw new Error('Rate limit exceeded. Please try again later.');
-    }
     if (!response.ok) {
-      throw new Error(`OpenAI TTS request failed: ${response.status} ${response.statusText}`);
+      const errBody = await response.text().catch(() => '');
+      if (response.status === 401) {
+        throw new Error('Invalid API key. Please check your OpenAI API key.');
+      }
+      if (response.status === 429) {
+        throw new Error('Rate limit exceeded. Please try again later.');
+      }
+      throw new Error(`OpenAI TTS error ${response.status}: ${errBody || response.statusText}`);
     }
 
     const audioData = await response.arrayBuffer();
