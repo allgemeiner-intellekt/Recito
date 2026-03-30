@@ -1,4 +1,6 @@
 import type { TTSProvider, ProviderConfig, Voice, SynthesisResult, SynthesisOptions } from '@shared/types';
+import { buildOpenAICompatibleUrl, validateOpenAICompatibleKey } from './openai-compatible';
+import { hasLikelyValidApiKeyFormat } from './api-key-format';
 
 const DEFAULT_BASE_URL = 'https://api.openai.com';
 
@@ -29,7 +31,7 @@ export const openaiProvider: TTSProvider = {
     const speed = options?.speed ?? 1.0;
     const format = options?.format ?? 'mp3';
 
-    const response = await fetch(`${baseUrl}/v1/audio/speech`, {
+    const response = await fetch(buildOpenAICompatibleUrl(baseUrl, '/audio/speech'), {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${config.apiKey}`,
@@ -60,14 +62,12 @@ export const openaiProvider: TTSProvider = {
   },
 
   async validateKey(config: ProviderConfig): Promise<boolean> {
-    const baseUrl = config.baseUrl || DEFAULT_BASE_URL;
-    try {
-      const response = await fetch(`${baseUrl}/v1/models`, {
-        headers: { 'Authorization': `Bearer ${config.apiKey}` },
-      });
-      return response.status === 200;
-    } catch {
+    if (!hasLikelyValidApiKeyFormat(config)) {
       return false;
     }
+    const baseUrl = config.baseUrl || DEFAULT_BASE_URL;
+    return validateOpenAICompatibleKey(baseUrl, {
+      'Authorization': `Bearer ${config.apiKey}`,
+    });
   },
 };

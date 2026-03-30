@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite';
+import { defineConfig } from 'vitest/config';
 import { crx } from '@crxjs/vite-plugin';
 import react from '@vitejs/plugin-react';
 import { resolve } from 'path';
@@ -19,5 +19,9 @@ export default defineConfig({
         onboarding: resolve(__dirname, 'src/onboarding/index.html'),
       },
     },
+  },
+  test: {
+    include: ['src/**/*.test.ts'],
+    exclude: ['reference/**'],
   },
 });

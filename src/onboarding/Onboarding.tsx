@@ -105,9 +105,16 @@ function StepProvider({ onNext, onSkip }: { onNext: () => void; onSkip: () => vo
 
   const selectedMeta = PROVIDER_LIST.find((p) => p.id === providerId);
   const isCustom = providerId === 'custom';
+  const canTest = Boolean(apiKey.trim() && (!isCustom || baseUrl.trim()));
 
   const handleTest = async () => {
     if (!apiKey.trim()) return;
+    if (isCustom && !baseUrl.trim()) {
+      setTestResult('error');
+      setTestMessage('Base URL is required for a custom provider.');
+      setSaved(false);
+      return;
+    }
     setTesting(true);
     setTestResult(null);
     setTestMessage('');
@@ -189,7 +196,12 @@ function StepProvider({ onNext, onSkip }: { onNext: () => void; onSkip: () => vo
               type="url"
               placeholder="https://api.example.com/v1"
               value={baseUrl}
-              onChange={(e) => setBaseUrl(e.target.value)}
+              onChange={(e) => {
+                setBaseUrl(e.target.value);
+                setTestResult(null);
+                setTestMessage('');
+                setSaved(false);
+              }}
             />
           </label>
         )}
@@ -204,6 +216,7 @@ function StepProvider({ onNext, onSkip }: { onNext: () => void; onSkip: () => vo
             onChange={(e) => {
               setApiKey(e.target.value);
               setTestResult(null);
+              setTestMessage('');
               setSaved(false);
             }}
           />
@@ -223,7 +236,7 @@ function StepProvider({ onNext, onSkip }: { onNext: () => void; onSkip: () => vo
         <button
           className="btn btn-primary full-width"
           onClick={saved ? onNext : handleTest}
-          disabled={testing || (!saved && !apiKey.trim())}
+          disabled={testing || (!saved && !canTest)}
         >
           {testing ? 'Testing...' : saved ? 'Continue' : 'Test Connection'}
         </button>

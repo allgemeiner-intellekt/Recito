@@ -1,4 +1,6 @@
 import type { TTSProvider, ProviderConfig, Voice, SynthesisResult, SynthesisOptions } from '@shared/types';
+import { buildOpenAICompatibleUrl, validateOpenAICompatibleSpeech } from './openai-compatible';
+import { hasLikelyValidApiKeyFormat } from './api-key-format';
 
 const DEFAULT_BASE_URL = 'https://api.groq.com/openai';
 
@@ -49,7 +51,7 @@ export const groqProvider: TTSProvider = {
       body.speed = options.speed;
     }
 
-    const response = await fetch(`${baseUrl}/v1/audio/speech`, {
+    const response = await fetch(buildOpenAICompatibleUrl(baseUrl, '/audio/speech'), {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${config.apiKey}`,
@@ -74,14 +76,21 @@ export const groqProvider: TTSProvider = {
   },
 
   async validateKey(config: ProviderConfig): Promise<boolean> {
-    const baseUrl = config.baseUrl || DEFAULT_BASE_URL;
-    try {
-      const response = await fetch(`${baseUrl}/v1/models`, {
-        headers: { 'Authorization': `Bearer ${config.apiKey}` },
-      });
-      return response.status === 200;
-    } catch {
+    if (!hasLikelyValidApiKeyFormat(config)) {
       return false;
     }
+    const baseUrl = config.baseUrl || DEFAULT_BASE_URL;
+    return validateOpenAICompatibleSpeech(
+      baseUrl,
+      {
+        'Authorization': `Bearer ${config.apiKey}`,
+      },
+      {
+        model: DEFAULT_MODEL,
+        input: '.',
+        voice: GROQ_VOICES[0]?.id ?? 'autumn',
+        response_format: 'wav',
+      },
+    );
   },
 };

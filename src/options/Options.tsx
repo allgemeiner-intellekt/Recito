@@ -53,6 +53,10 @@ interface ProviderFormData {
 
 const EMPTY_FORM: ProviderFormData = { providerId: 'openai', name: '', apiKey: '', baseUrl: '' };
 
+function nextFormState(current: ProviderFormData, partial: Partial<ProviderFormData>): ProviderFormData {
+  return { ...current, ...partial };
+}
+
 export function Options() {
   const [section, setSection] = useState<Section>('providers');
   const [providers, setProviders] = useState<ProviderConfig[]>([]);
@@ -70,6 +74,9 @@ export function Options() {
 
   // Confirm reset
   const [confirmReset, setConfirmReset] = useState(false);
+  const requiresBaseUrl = form.providerId === 'custom';
+  const canTestConnection = Boolean(form.apiKey.trim() && (!requiresBaseUrl || form.baseUrl.trim()));
+  const canSaveProvider = Boolean(form.apiKey.trim() && (!requiresBaseUrl || form.baseUrl.trim()));
 
   // Load data
   const loadData = useCallback(async () => {
@@ -155,6 +162,11 @@ export function Options() {
   };
 
   const handleTestConnection = async () => {
+    if (requiresBaseUrl && !form.baseUrl.trim()) {
+      setTestResult('Base URL is required for a custom provider.');
+      return;
+    }
+
     setTesting(true);
     setTestResult(null);
     try {
@@ -169,8 +181,9 @@ export function Options() {
       setTestResult(ok ? 'Connection successful!' : 'Connection failed.');
     } catch (err: unknown) {
       setTestResult(err instanceof Error ? err.message : 'Connection failed.');
+    } finally {
+      setTesting(false);
     }
-    setTesting(false);
   };
 
   // --- Settings helpers ---
@@ -301,15 +314,18 @@ export function Options() {
                     <select
                       className="form-select"
                       value={form.providerId}
-                      onChange={(e) =>
-                        setForm({
-                          ...form,
-                          providerId: e.target.value,
-                          name:
-                            PROVIDER_LIST.find((p) => p.id === e.target.value)?.name ??
-                            e.target.value,
-                        })
-                      }
+                      onChange={(e) => {
+                        setTestResult(null);
+                        setForm(
+                          nextFormState(form, {
+                            providerId: e.target.value,
+                            name:
+                              PROVIDER_LIST.find((p) => p.id === e.target.value)?.name ??
+                              e.target.value,
+                            baseUrl: e.target.value === 'custom' ? form.baseUrl : '',
+                          }),
+                        );
+                      }}
                     >
                       {PROVIDER_LIST.map((p) => (
                         <option key={p.id} value={p.id}>
@@ -325,7 +341,10 @@ export function Options() {
                       className="form-input"
                       type="text"
                       value={form.name}
-                      onChange={(e) => setForm({ ...form, name: e.target.value })}
+                      onChange={(e) => {
+                        setTestResult(null);
+                        setForm(nextFormState(form, { name: e.target.value }));
+                      }}
                       placeholder="My OpenAI key"
                     />
                   </label>
@@ -336,7 +355,10 @@ export function Options() {
                       className="form-input"
                       type="password"
                       value={form.apiKey}
-                      onChange={(e) => setForm({ ...form, apiKey: e.target.value })}
+                      onChange={(e) => {
+                        setTestResult(null);
+                        setForm(nextFormState(form, { apiKey: e.target.value }));
+                      }}
                       placeholder="sk-..."
                     />
                   </label>
@@ -348,7 +370,10 @@ export function Options() {
                         className="form-input"
                         type="url"
                         value={form.baseUrl}
-                        onChange={(e) => setForm({ ...form, baseUrl: e.target.value })}
+                        onChange={(e) => {
+                          setTestResult(null);
+                          setForm(nextFormState(form, { baseUrl: e.target.value }));
+                        }}
                         placeholder="https://api.example.com/v1"
                       />
                     </label>
@@ -366,7 +391,7 @@ export function Options() {
                     <button
                       className="btn"
                       onClick={handleTestConnection}
-                      disabled={testing || !form.apiKey}
+                      disabled={testing || !canTestConnection}
                     >
                       {testing ? 'Testing...' : 'Test Connection'}
                     </button>
@@ -377,7 +402,7 @@ export function Options() {
                       <button
                         className="btn btn-primary"
                         onClick={handleSaveProvider}
-                        disabled={!form.apiKey}
+                        disabled={!canSaveProvider}
                       >
                         Save
                       </button>

@@ -1,4 +1,5 @@
 import type { TTSProvider, ProviderConfig, Voice, SynthesisResult, SynthesisOptions } from '@shared/types';
+import { buildOpenAICompatibleUrl, validateOpenAICompatibleSpeech } from './openai-compatible';
 
 export const customProvider: TTSProvider = {
   id: 'custom',
@@ -7,7 +8,7 @@ export const customProvider: TTSProvider = {
   async listVoices(config: ProviderConfig): Promise<Voice[]> {
     if (!config.baseUrl) return [];
     try {
-      const response = await fetch(`${config.baseUrl}/v1/audio/voices`, {
+      const response = await fetch(buildOpenAICompatibleUrl(config.baseUrl, '/audio/voices'), {
         headers: { 'Authorization': `Bearer ${config.apiKey}` },
       });
       if (!response.ok) return [];
@@ -34,7 +35,7 @@ export const customProvider: TTSProvider = {
     const speed = options?.speed ?? 1.0;
     const format = options?.format ?? 'mp3';
 
-    const response = await fetch(`${config.baseUrl}/v1/audio/speech`, {
+    const response = await fetch(buildOpenAICompatibleUrl(config.baseUrl, '/audio/speech'), {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${config.apiKey}`,
@@ -66,13 +67,21 @@ export const customProvider: TTSProvider = {
 
   async validateKey(config: ProviderConfig): Promise<boolean> {
     if (!config.baseUrl) return false;
-    try {
-      const response = await fetch(`${config.baseUrl}/v1/models`, {
-        headers: { 'Authorization': `Bearer ${config.apiKey}` },
-      });
-      return response.status === 200;
-    } catch {
-      return false;
-    }
+    const voices = await this.listVoices(config);
+    const voiceId = voices[0]?.id ?? 'alloy';
+    const model = (config.extraParams?.model as string) ?? 'tts-1';
+
+    return validateOpenAICompatibleSpeech(
+      config.baseUrl,
+      {
+        'Authorization': `Bearer ${config.apiKey}`,
+      },
+      {
+        model,
+        input: '.',
+        voice: voiceId,
+        response_format: 'mp3',
+      },
+    );
   },
 };

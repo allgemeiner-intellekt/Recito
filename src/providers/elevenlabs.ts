@@ -1,4 +1,5 @@
 import type { TTSProvider, ProviderConfig, Voice, SynthesisResult, SynthesisOptions } from '@shared/types';
+import { hasLikelyValidApiKeyFormat } from './api-key-format';
 
 const DEFAULT_BASE_URL = 'https://api.elevenlabs.io';
 
@@ -72,6 +73,9 @@ export const elevenlabsProvider: TTSProvider = {
   },
 
   async validateKey(config: ProviderConfig): Promise<boolean> {
+    if (!hasLikelyValidApiKeyFormat(config)) {
+      return false;
+    }
     const baseUrl = config.baseUrl || DEFAULT_BASE_URL;
     try {
       const response = await fetch(`${baseUrl}/v1/voices`, {
