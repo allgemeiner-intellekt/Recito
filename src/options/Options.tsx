@@ -57,6 +57,41 @@ function nextFormState(current: ProviderFormData, partial: Partial<ProviderFormD
   return { ...current, ...partial };
 }
 
+function getFormProviderConfig(
+  form: ProviderFormData,
+  editingId: string | null,
+): ProviderConfig {
+  const trimmedProviderId = form.providerId.trim();
+  const trimmedName = form.name.trim();
+  return {
+    id: editingId ?? generateId(),
+    providerId: trimmedProviderId,
+    name: trimmedName || PROVIDER_LIST.find((p) => p.id === trimmedProviderId)?.name || trimmedProviderId,
+    apiKey: form.apiKey.trim(),
+    baseUrl: form.baseUrl.trim() || undefined,
+  };
+}
+
+function describeVoiceLoadError(error: unknown): string {
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+  if (typeof error === 'string' && error.trim()) {
+    return error;
+  }
+  if (error && typeof error === 'object') {
+    try {
+      const serialized = JSON.stringify(error);
+      if (serialized && serialized !== '{}') {
+        return serialized;
+      }
+    } catch {
+      // Fall back to a generic string below.
+    }
+  }
+  return 'Failed to load voices (no response from background service).';
+}
+
 export function Options() {
   const [section, setSection] = useState<Section>('providers');
   const [providers, setProviders] = useState<ProviderConfig[]>([]);
@@ -106,13 +141,22 @@ export function Options() {
 
     setVoicesLoading(true);
     setVoicesError('');
-    sendMessage<Voice[]>({ type: MSG.LIST_VOICES, providerId: activeConfig.id })
-      .then((v) => {
-        if (Array.isArray(v)) setVoices(v);
-        else setVoices([]);
+    sendMessage<Voice[] | { error?: string }>({ type: MSG.LIST_VOICES, providerId: activeConfig.id })
+      .then((response) => {
+        if (Array.isArray(response)) {
+          setVoices(response);
+          return;
+        }
+
+        const errorMessage =
+          response && typeof response === 'object' && 'error' in response
+            ? response.error
+            : undefined;
+        setVoices([]);
+        setVoicesError(describeVoiceLoadError(errorMessage ?? response));
       })
       .catch((err: unknown) => {
-        setVoicesError(err instanceof Error ? err.message : 'Failed to load voices');
+        setVoicesError(describeVoiceLoadError(err));
         setVoices([]);
       })
       .finally(() => setVoicesLoading(false));
@@ -139,13 +183,7 @@ export function Options() {
   };
 
   const handleSaveProvider = async () => {
-    const config: ProviderConfig = {
-      id: editingId ?? generateId(),
-      providerId: form.providerId,
-      name: form.name || PROVIDER_LIST.find((p) => p.id === form.providerId)?.name || form.providerId,
-      apiKey: form.apiKey,
-      baseUrl: form.baseUrl || undefined,
-    };
+    const config = getFormProviderConfig(form, editingId);
     await saveProvider(config);
 
     // If first provider, set as active
@@ -170,13 +208,7 @@ export function Options() {
     setTesting(true);
     setTestResult(null);
     try {
-      const config: ProviderConfig = {
-        id: editingId ?? 'test',
-        providerId: form.providerId,
-        name: form.name,
-        apiKey: form.apiKey,
-        baseUrl: form.baseUrl || undefined,
-      };
+      const config = getFormProviderConfig(form, editingId ?? 'test');
       const ok = await sendMessage<boolean>({ type: MSG.VALIDATE_KEY, config });
       setTestResult(ok ? 'Connection successful!' : 'Connection failed.');
     } catch (err: unknown) {

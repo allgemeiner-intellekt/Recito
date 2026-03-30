@@ -5,6 +5,17 @@ console.log('Immersive Reader: offscreen document loaded');
 
 const player = new AudioPlayer();
 
+function isOffscreenMessage(message: ExtensionMessage): boolean {
+  return (
+    message.type === MSG.OFFSCREEN_PLAY ||
+    message.type === MSG.OFFSCREEN_PAUSE ||
+    message.type === MSG.OFFSCREEN_RESUME ||
+    message.type === MSG.OFFSCREEN_STOP ||
+    message.type === MSG.OFFSCREEN_SET_SPEED ||
+    message.type === MSG.OFFSCREEN_SET_VOLUME
+  );
+}
+
 // Convert base64 string back to ArrayBuffer
 function base64ToArrayBuffer(base64: string): ArrayBuffer {
   const binary = atob(base64);
@@ -17,6 +28,10 @@ function base64ToArrayBuffer(base64: string): ArrayBuffer {
 
 chrome.runtime.onMessage.addListener(
   (message: ExtensionMessage, _sender, sendResponse) => {
+    if (!isOffscreenMessage(message)) {
+      return false;
+    }
+
     handleMessage(message).then(sendResponse).catch((err) => {
       sendResponse({ error: String(err) });
     });
@@ -50,10 +65,6 @@ async function handleMessage(message: ExtensionMessage): Promise<unknown> {
 
     case MSG.OFFSCREEN_SET_VOLUME:
       player.setVolume(message.volume);
-      return { ok: true };
-
-    default:
-      // Ignore messages not meant for offscreen (e.g., content script messages)
       return { ok: true };
   }
 }

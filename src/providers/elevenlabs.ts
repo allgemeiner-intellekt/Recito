@@ -2,19 +2,64 @@ import type { TTSProvider, ProviderConfig, Voice, SynthesisResult, SynthesisOpti
 import { hasLikelyValidApiKeyFormat } from './api-key-format';
 
 const DEFAULT_BASE_URL = 'https://api.elevenlabs.io';
+const DEFAULT_MODEL_ID = 'eleven_multilingual_v2';
+
+function getNormalizedBaseUrl(config: ProviderConfig): string {
+  return (config.baseUrl || DEFAULT_BASE_URL).trim().replace(/\/+$/, '');
+}
+
+function getNormalizedApiKey(config: ProviderConfig): string {
+  return config.apiKey.trim();
+}
+
+function getElevenLabsErrorMessage(raw: string): string {
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    return '';
+  }
+
+  try {
+    const parsed = JSON.parse(trimmed) as {
+      detail?: string | { message?: string; status?: string };
+    };
+    if (typeof parsed.detail === 'string') {
+      return parsed.detail;
+    }
+    if (parsed.detail && typeof parsed.detail === 'object') {
+      const status = parsed.detail.status?.trim();
+      const message = parsed.detail.message?.trim();
+      if (status && message) {
+        return `${status}: ${message}`;
+      }
+      return message || status || trimmed;
+    }
+  } catch {
+    // Fall back to the raw response text when the body is not JSON.
+  }
+
+  return trimmed;
+}
 
 export const elevenlabsProvider: TTSProvider = {
   id: 'elevenlabs',
   name: 'ElevenLabs',
 
   async listVoices(config: ProviderConfig): Promise<Voice[]> {
-    const baseUrl = config.baseUrl || DEFAULT_BASE_URL;
+    const baseUrl = getNormalizedBaseUrl(config);
+    const apiKey = getNormalizedApiKey(config);
     const response = await fetch(`${baseUrl}/v1/voices`, {
-      headers: { 'xi-api-key': config.apiKey },
+      headers: { 'xi-api-key': apiKey },
     });
 
     if (!response.ok) {
-      throw new Error(`Failed to fetch ElevenLabs voices: ${response.status}`);
+      const errBody = await response.text().catch(() => '');
+      const detail = getElevenLabsErrorMessage(errBody);
+      if (response.status === 401) {
+        throw new Error(detail || 'ElevenLabs rejected the API key while loading voices.');
+      }
+      throw new Error(
+        `Failed to fetch ElevenLabs voices (${response.status})${detail ? `: ${detail}` : ''}`,
+      );
     }
 
     const data = await response.json();
@@ -32,12 +77,13 @@ export const elevenlabsProvider: TTSProvider = {
     config: ProviderConfig,
     options?: SynthesisOptions,
   ): Promise<SynthesisResult> {
-    const baseUrl = config.baseUrl || DEFAULT_BASE_URL;
+    const baseUrl = getNormalizedBaseUrl(config);
+    const apiKey = getNormalizedApiKey(config);
     const format = options?.format ?? 'mp3';
 
     const body: Record<string, unknown> = {
       text,
-      model_id: (config.extraParams?.model_id as string) ?? 'eleven_monolingual_v1',
+      model_id: (config.extraParams?.model_id as string) ?? DEFAULT_MODEL_ID,
     };
 
     if (config.extraParams?.stability != null || config.extraParams?.similarity_boost != null) {
@@ -50,7 +96,7 @@ export const elevenlabsProvider: TTSProvider = {
     const response = await fetch(`${baseUrl}/v1/text-to-speech/${voice.id}/stream`, {
       method: 'POST',
       headers: {
-        'xi-api-key': config.apiKey,
+        'xi-api-key': apiKey,
         'Content-Type': 'application/json',
         'Accept': `audio/${format}`,
       },
@@ -59,13 +105,16 @@ export const elevenlabsProvider: TTSProvider = {
 
     if (!response.ok) {
       const errBody = await response.text().catch(() => '');
+      const detail = getElevenLabsErrorMessage(errBody);
       if (response.status === 401) {
-        throw new Error('Invalid API key. Please check your ElevenLabs API key.');
+        throw new Error(detail || 'ElevenLabs rejected the API request with a 401 error.');
       }
       if (response.status === 429) {
         throw new Error('Rate limit exceeded. Please try again later.');
       }
-      throw new Error(`ElevenLabs TTS error ${response.status}: ${errBody || response.statusText}`);
+      throw new Error(
+        `ElevenLabs TTS error ${response.status}: ${detail || response.statusText}`,
+      );
     }
 
     const audioData = await response.arrayBuffer();
@@ -76,10 +125,11 @@ export const elevenlabsProvider: TTSProvider = {
     if (!hasLikelyValidApiKeyFormat(config)) {
       return false;
     }
-    const baseUrl = config.baseUrl || DEFAULT_BASE_URL;
+    const baseUrl = getNormalizedBaseUrl(config);
+    const apiKey = getNormalizedApiKey(config);
     try {
       const response = await fetch(`${baseUrl}/v1/voices`, {
-        headers: { 'xi-api-key': config.apiKey },
+        headers: { 'xi-api-key': apiKey },
       });
       return response.status === 200;
     } catch {

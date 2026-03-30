@@ -25,8 +25,26 @@ let highlightManager: HighlightManager | null = null;
 // Mount the floating toolbar into the page
 mountToolbar();
 
+function isContentMessage(message: ExtensionMessage): boolean {
+  return (
+    message.type === MSG.EXTRACT_CONTENT ||
+    message.type === MSG.GET_CHUNK ||
+    message.type === MSG.GET_PAGE_INFO ||
+    message.type === MSG.PLAYBACK_PROGRESS ||
+    message.type === MSG.CHUNK_COMPLETE ||
+    message.type === MSG.WORD_TIMING ||
+    message.type === MSG.PLAYBACK_ERROR ||
+    message.type === MSG.START_READING ||
+    message.type === MSG.STOP
+  );
+}
+
 chrome.runtime.onMessage.addListener(
   (message: ExtensionMessage, _sender, sendResponse) => {
+    if (!isContentMessage(message)) {
+      return false;
+    }
+
     handleMessage(message).then(sendResponse).catch((err) => {
       sendResponse({ error: String(err) });
     });
@@ -184,9 +202,6 @@ async function handleMessage(message: ExtensionMessage): Promise<unknown> {
       store._setPlaybackStatus('idle');
       return { ok: true };
     }
-
-    default:
-      return { ok: true };
   }
 }
 

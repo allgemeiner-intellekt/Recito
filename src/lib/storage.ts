@@ -12,12 +12,18 @@ export async function getProviders(): Promise<ProviderConfig[]> {
 }
 
 export async function saveProvider(config: ProviderConfig): Promise<void> {
+  const normalizedConfig: ProviderConfig = {
+    ...config,
+    name: config.name.trim(),
+    apiKey: config.apiKey.trim(),
+    baseUrl: config.baseUrl?.trim() || undefined,
+  };
   const providers = await getProviders();
-  const index = providers.findIndex((p) => p.id === config.id);
+  const index = providers.findIndex((p) => p.id === normalizedConfig.id);
   if (index >= 0) {
-    providers[index] = config;
+    providers[index] = normalizedConfig;
   } else {
-    providers.push(config);
+    providers.push(normalizedConfig);
   }
   await chrome.storage.local.set({ [PROVIDERS_KEY]: providers });
 }
