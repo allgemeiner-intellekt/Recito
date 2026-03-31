@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import type { ProviderConfig, Voice, AppSettings } from '@shared/types';
 import { PROVIDER_LIST } from '@providers/registry';
+import { ELEVENLABS_MODELS } from '@providers/elevenlabs';
 import {
   getProviders,
   saveProvider,
@@ -49,9 +50,10 @@ interface ProviderFormData {
   name: string;
   apiKey: string;
   baseUrl: string;
+  modelId: string;
 }
 
-const EMPTY_FORM: ProviderFormData = { providerId: 'openai', name: '', apiKey: '', baseUrl: '' };
+const EMPTY_FORM: ProviderFormData = { providerId: 'openai', name: '', apiKey: '', baseUrl: '', modelId: 'eleven_multilingual_v2' };
 
 function nextFormState(current: ProviderFormData, partial: Partial<ProviderFormData>): ProviderFormData {
   return { ...current, ...partial };
@@ -63,13 +65,17 @@ function getFormProviderConfig(
 ): ProviderConfig {
   const trimmedProviderId = form.providerId.trim();
   const trimmedName = form.name.trim();
-  return {
+  const config: ProviderConfig = {
     id: editingId ?? generateId(),
     providerId: trimmedProviderId,
     name: trimmedName || PROVIDER_LIST.find((p) => p.id === trimmedProviderId)?.name || trimmedProviderId,
     apiKey: form.apiKey.trim(),
     baseUrl: form.baseUrl.trim() || undefined,
   };
+  if (trimmedProviderId === 'elevenlabs') {
+    config.extraParams = { model_id: form.modelId };
+  }
+  return config;
 }
 
 function describeVoiceLoadError(error: unknown): string {
@@ -177,6 +183,7 @@ export function Options() {
       name: config.name,
       apiKey: config.apiKey,
       baseUrl: config.baseUrl ?? '',
+      modelId: (config.extraParams?.model_id as string) ?? 'eleven_multilingual_v2',
     });
     setTestResult(null);
     setShowForm(true);
@@ -394,6 +401,26 @@ export function Options() {
                       placeholder="sk-..."
                     />
                   </label>
+
+                  {form.providerId === 'elevenlabs' && (
+                    <label className="form-label">
+                      Model
+                      <select
+                        className="form-select"
+                        value={form.modelId}
+                        onChange={(e) => {
+                          setTestResult(null);
+                          setForm(nextFormState(form, { modelId: e.target.value }));
+                        }}
+                      >
+                        {ELEVENLABS_MODELS.map((m) => (
+                          <option key={m.modelId} value={m.modelId}>
+                            {m.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  )}
 
                   {form.providerId === 'custom' && (
                     <label className="form-label">

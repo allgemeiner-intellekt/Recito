@@ -4,6 +4,11 @@ import { hasLikelyValidApiKeyFormat } from './api-key-format';
 const DEFAULT_BASE_URL = 'https://api.elevenlabs.io';
 const DEFAULT_MODEL_ID = 'eleven_multilingual_v2';
 
+export const ELEVENLABS_MODELS = [
+  { label: 'Economy (Flash v2.5)', modelId: 'eleven_flash_v2_5' },
+  { label: 'Quality (Multilingual v2)', modelId: 'eleven_multilingual_v2' },
+] as const;
+
 function getNormalizedBaseUrl(config: ProviderConfig): string {
   return (config.baseUrl || DEFAULT_BASE_URL).trim().replace(/\/+$/, '');
 }
