@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import type { ProviderConfig, Voice, AppSettings } from '@shared/types';
 import { PROVIDER_LIST } from '@providers/registry';
 import { ELEVENLABS_MODELS } from '@providers/elevenlabs';
@@ -8,12 +8,14 @@ import {
   deleteProvider,
   getSettings,
   saveSettings,
-  setActiveProvider,
+  setActiveProviderGroup,
+  getProviderGroupKey,
   maskKey,
   generateId,
 } from '@shared/storage';
 import { DEFAULT_SETTINGS, SPEED_MIN, SPEED_MAX, SPEED_STEP } from '@shared/constants';
 import { MSG, sendMessage } from '@shared/messages';
+import type { ConfigHealth } from '../background/failover';
 
 type Section = 'providers' | 'voices' | 'playback' | 'highlighting' | 'hotkeys' | 'advanced';
 
@@ -113,6 +115,9 @@ export function Options() {
   const [testResult, setTestResult] = useState<string | null>(null);
   const [testing, setTesting] = useState(false);
 
+  // Health state
+  const [healthMap, setHealthMap] = useState<Record<string, ConfigHealth>>({});
+
   // Confirm reset
   const [confirmReset, setConfirmReset] = useState(false);
   const requiresBaseUrl = form.providerId === 'custom';
@@ -139,10 +144,12 @@ export function Options() {
     return () => chrome.storage.onChanged.removeListener(handler);
   }, [loadData]);
 
-  // Fetch voices when section is voices
+  // Fetch voices when section is voices — use the first config in the active group
   useEffect(() => {
-    if (section !== 'voices' || !settings.activeProviderId) return;
-    const activeConfig = providers.find((p) => p.id === settings.activeProviderId);
+    if (section !== 'voices' || !settings.activeProviderGroup) return;
+    const activeConfig = providers.find(
+      (p) => getProviderGroupKey(p) === settings.activeProviderGroup,
+    );
     if (!activeConfig) return;
 
     setVoicesLoading(true);
@@ -166,7 +173,21 @@ export function Options() {
         setVoices([]);
       })
       .finally(() => setVoicesLoading(false));
-  }, [section, settings.activeProviderId, providers]);
+  }, [section, settings.activeProviderGroup, providers]);
+
+  // Poll provider health when on the providers section
+  useEffect(() => {
+    if (section !== 'providers') return;
+
+    const fetchHealth = () => {
+      sendMessage<Record<string, ConfigHealth>>({ type: MSG.GET_PROVIDER_HEALTH })
+        .then(setHealthMap)
+        .catch(() => {});
+    };
+    fetchHealth();
+    const interval = setInterval(fetchHealth, 10_000);
+    return () => clearInterval(interval);
+  }, [section]);
 
   // --- Provider CRUD ---
   const openAddForm = () => {
@@ -193,9 +214,9 @@ export function Options() {
     const config = getFormProviderConfig(form, editingId);
     await saveProvider(config);
 
-    // If first provider, set as active
+    // If first provider, set its group as active
     if (providers.length === 0) {
-      await setActiveProvider(config.id);
+      await setActiveProviderGroup(getProviderGroupKey(config));
     }
     setShowForm(false);
     await loadData();
@@ -204,6 +225,15 @@ export function Options() {
   const handleDeleteProvider = async (id: string) => {
     await deleteProvider(id);
     await loadData();
+  };
+
+  const handleResetHealth = async (configId: string) => {
+    await sendMessage({ type: MSG.RESET_PROVIDER_HEALTH, configId } as never);
+    setHealthMap((prev) => {
+      const next = { ...prev };
+      delete next[configId];
+      return next;
+    });
   };
 
   const handleTestConnection = async () => {
@@ -239,7 +269,7 @@ export function Options() {
   };
 
   const handleSelectVoice = async (voiceId: string) => {
-    if (!settings.activeProviderId) return;
+    if (!settings.activeProviderGroup) return;
     const updated = { ...settings, activeVoiceId: voiceId };
     setSettings(updated);
     await saveSettings(updated);
@@ -299,42 +329,103 @@ export function Options() {
             )}
 
             <div className="card-list">
-              {providers.map((p) => {
-                const meta = PROVIDER_LIST.find((m) => m.id === p.providerId);
-                const isActive = p.id === settings.activeProviderId;
-                return (
-                  <div key={p.id} className={`card ${isActive ? 'card-active' : ''}`}>
-                    <div className="card-body">
-                      <div className="card-title-row">
-                        <strong>{p.name}</strong>
-                        {isActive && <span className="badge">Active</span>}
+              {(() => {
+                // Group providers by providerId (+ baseUrl for custom)
+                const groups = new Map<string, ProviderConfig[]>();
+                for (const p of providers) {
+                  const key = getProviderGroupKey(p);
+                  const group = groups.get(key) ?? [];
+                  group.push(p);
+                  groups.set(key, group);
+                }
+
+                return Array.from(groups.entries()).map(([groupKey, groupProviders]) => {
+                  const meta = PROVIDER_LIST.find((m) => m.id === groupProviders[0].providerId);
+                  const isGroupActive = settings.activeProviderGroup === groupKey;
+                  const healthyCount = groupProviders.filter(
+                    (p) => !healthMap[p.id] || healthMap[p.id].status === 'healthy',
+                  ).length;
+
+                  return (
+                    <React.Fragment key={groupKey}>
+                      <div className="provider-group-header">
+                        <span>
+                          {meta?.name ?? groupProviders[0].providerId}
+                          {groupProviders.length > 1 && (
+                            <> ({groupProviders.length} keys &mdash; {healthyCount} healthy)</>
+                          )}
+                        </span>
+                        {isGroupActive ? (
+                          <span className="badge">Active</span>
+                        ) : (
+                          <button
+                            className="btn btn-sm"
+                            onClick={() =>
+                              setActiveProviderGroup(groupKey).then(loadData)
+                            }
+                          >
+                            Set Active
+                          </button>
+                        )}
                       </div>
-                      <div className="card-meta">
-                        {meta?.name ?? p.providerId} &middot; Key: {maskKey(p.apiKey)}
-                      </div>
-                    </div>
-                    <div className="card-actions">
-                      {!isActive && (
-                        <button
-                          className="btn btn-sm"
-                          onClick={() => setActiveProvider(p.id).then(loadData)}
-                        >
-                          Set Active
-                        </button>
-                      )}
-                      <button className="btn btn-sm" onClick={() => openEditForm(p)}>
-                        Edit
-                      </button>
-                      <button
-                        className="btn btn-sm btn-danger"
-                        onClick={() => handleDeleteProvider(p.id)}
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
+                      {groupProviders.map((p) => {
+                        const provMeta = PROVIDER_LIST.find((m) => m.id === p.providerId);
+                        const health = healthMap[p.id];
+                        const healthStatus = health?.status ?? 'healthy';
+
+                        return (
+                          <div
+                            key={p.id}
+                            className={`card ${isGroupActive ? 'card-active' : ''}`}
+                          >
+                            <div className="card-body">
+                              <div className="card-title-row">
+                                <span className={`health-dot health-dot--${healthStatus}`} />
+                                <strong>{p.name}</strong>
+                              </div>
+                              <div className="card-meta">
+                                {provMeta?.name ?? p.providerId} &middot; Key: {maskKey(p.apiKey)}
+                              </div>
+                              {healthStatus === 'cooldown' && health?.cooldownUntil && (
+                                <div className="health-info">
+                                  Cooling down &mdash; retrying in{' '}
+                                  {Math.max(
+                                    0,
+                                    Math.ceil((health.cooldownUntil - Date.now()) / 1000),
+                                  )}
+                                  s
+                                </div>
+                              )}
+                              {healthStatus === 'failed' && (
+                                <div className="health-info">
+                                  Failed: {health?.lastError?.message ?? 'Unknown error'}
+                                  <button
+                                    className="btn btn-sm"
+                                    onClick={() => handleResetHealth(p.id)}
+                                  >
+                                    Reset
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                            <div className="card-actions">
+                              <button className="btn btn-sm" onClick={() => openEditForm(p)}>
+                                Edit
+                              </button>
+                              <button
+                                className="btn btn-sm btn-danger"
+                                onClick={() => handleDeleteProvider(p.id)}
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </React.Fragment>
+                  );
+                });
+              })()}
             </div>
 
             {/* Add/Edit Modal */}
@@ -477,8 +568,8 @@ export function Options() {
         {section === 'voices' && (
           <div className="section-content">
             <h1>Voices</h1>
-            {!settings.activeProviderId ? (
-              <p className="empty-state">Select an active provider first to browse voices.</p>
+            {!settings.activeProviderGroup ? (
+              <p className="empty-state">Select an active provider group first to browse voices.</p>
             ) : voicesLoading ? (
               <p className="loading-text">Loading voices...</p>
             ) : voicesError ? (

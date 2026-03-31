@@ -19,6 +19,9 @@ export interface ToolbarState {
   // Provider info
   providerName: string;
 
+  // Toast notification
+  toastMessage: string | null;
+
   // Actions
   play: () => void;
   pause: () => void;
@@ -39,6 +42,7 @@ export interface ToolbarState {
   _setCurrentChunk: (index: number, total?: number) => void;
   _setTotalChunks: (total: number) => void;
   _setProviderName: (name: string) => void;
+  _showToast: (message: string) => void;
 }
 
 export const useToolbarStore = create<ToolbarState>((set, get) => ({
@@ -51,6 +55,7 @@ export const useToolbarStore = create<ToolbarState>((set, get) => ({
   toolbarVisible: false,
   toolbarExpanded: false,
   providerName: '',
+  toastMessage: null,
 
   play: () => {
     sendMessage({ type: MSG.PLAY });
@@ -123,4 +128,8 @@ export const useToolbarStore = create<ToolbarState>((set, get) => ({
     set((s) => ({ currentChunkIndex: index, totalChunks: total ?? s.totalChunks })),
   _setTotalChunks: (total) => set({ totalChunks: total }),
   _setProviderName: (name) => set({ providerName: name }),
+  _showToast: (message) => {
+    set({ toastMessage: message });
+    setTimeout(() => set({ toastMessage: null }), 3000);
+  },
 }));

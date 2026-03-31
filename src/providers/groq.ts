@@ -1,6 +1,7 @@
 import type { TTSProvider, ProviderConfig, Voice, SynthesisResult, SynthesisOptions } from '@shared/types';
 import { buildOpenAICompatibleUrl, validateOpenAICompatibleSpeech } from './openai-compatible';
 import { hasLikelyValidApiKeyFormat } from './api-key-format';
+import { ApiError } from '@shared/api-error';
 
 const DEFAULT_BASE_URL = 'https://api.groq.com/openai';
 
@@ -51,24 +52,29 @@ export const groqProvider: TTSProvider = {
       body.speed = options.speed;
     }
 
-    const response = await fetch(buildOpenAICompatibleUrl(baseUrl, '/audio/speech'), {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${config.apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(body),
-    });
+    let response: Response;
+    try {
+      response = await fetch(buildOpenAICompatibleUrl(baseUrl, '/audio/speech'), {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${config.apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
+      });
+    } catch (err) {
+      throw ApiError.fromNetworkError(err, 'groq');
+    }
 
     if (!response.ok) {
       const errBody = await response.text().catch(() => '');
       if (response.status === 401) {
-        throw new Error('Invalid API key. Please check your Groq API key.');
+        throw new ApiError('Invalid API key. Please check your Groq API key.', 401, 'groq', false);
       }
       if (response.status === 429) {
-        throw new Error('Rate limit exceeded. Please try again later.');
+        throw new ApiError('Rate limit exceeded. Please try again later.', 429, 'groq', true);
       }
-      throw new Error(`Groq TTS error ${response.status}: ${errBody || response.statusText}`);
+      throw ApiError.fromResponse(response.status, errBody || response.statusText, 'groq');
     }
 
     const audioData = await response.arrayBuffer();

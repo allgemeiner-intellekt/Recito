@@ -1,5 +1,6 @@
 import type { TTSProvider, ProviderConfig, Voice, SynthesisResult, SynthesisOptions } from '@shared/types';
 import { buildOpenAICompatibleUrl, validateOpenAICompatibleSpeech } from './openai-compatible';
+import { ApiError } from '@shared/api-error';
 
 export const customProvider: TTSProvider = {
   id: 'custom',
@@ -35,30 +36,35 @@ export const customProvider: TTSProvider = {
     const speed = options?.speed ?? 1.0;
     const format = options?.format ?? 'mp3';
 
-    const response = await fetch(buildOpenAICompatibleUrl(config.baseUrl, '/audio/speech'), {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${config.apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: (config.extraParams?.model as string) ?? 'tts-1',
-        input: text,
-        voice: voice.id,
-        response_format: format,
-        speed,
-      }),
-    });
+    let response: Response;
+    try {
+      response = await fetch(buildOpenAICompatibleUrl(config.baseUrl, '/audio/speech'), {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${config.apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: (config.extraParams?.model as string) ?? 'tts-1',
+          input: text,
+          voice: voice.id,
+          response_format: format,
+          speed,
+        }),
+      });
+    } catch (err) {
+      throw ApiError.fromNetworkError(err, 'custom');
+    }
 
     if (!response.ok) {
       const errBody = await response.text().catch(() => '');
       if (response.status === 401) {
-        throw new Error('Invalid API key. Please check your API key.');
+        throw new ApiError('Invalid API key. Please check your API key.', 401, 'custom', false);
       }
       if (response.status === 429) {
-        throw new Error('Rate limit exceeded. Please try again later.');
+        throw new ApiError('Rate limit exceeded. Please try again later.', 429, 'custom', true);
       }
-      throw new Error(`TTS error ${response.status}: ${errBody || response.statusText}`);
+      throw ApiError.fromResponse(response.status, errBody || response.statusText, 'custom');
     }
 
     const audioData = await response.arrayBuffer();

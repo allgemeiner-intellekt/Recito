@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { MSG, sendMessage } from '@shared/messages';
 import type { PlaybackState, ProviderConfig, AppSettings, PageInfo } from '@shared/types';
-import { getProviders, getSettings, saveSettings, getActiveProvider } from '@shared/storage';
+import { getProviders, getSettings, saveSettings, getActiveProvider, getProviderGroupKey } from '@shared/storage';
 import { SPEED_MIN, SPEED_MAX, SPEED_STEP } from '@shared/constants';
 
 const SPEED_CHIPS = [1, 1.25, 1.5, 2];
@@ -143,10 +143,10 @@ export function Popup() {
 
   const handleProviderChange = useCallback(
     (e: React.ChangeEvent<HTMLSelectElement>) => {
-      const id = e.target.value;
-      const prov = providers.find((p) => p.id === id);
+      const groupKey = e.target.value;
+      const prov = providers.find((p) => getProviderGroupKey(p) === groupKey);
       if (prov) {
-        sendMessage({ type: MSG.SET_ACTIVE_PROVIDER, configId: prov.id });
+        sendMessage({ type: MSG.SET_ACTIVE_PROVIDER, groupKey });
         setActiveProvider(prov);
       }
     },
@@ -198,18 +198,30 @@ export function Popup() {
         ) : (
           <select
             className="provider-select"
-            value={activeProvider?.id ?? ''}
+            value={activeProvider ? getProviderGroupKey(activeProvider) : ''}
             onChange={handleProviderChange}
             aria-label="Select TTS provider"
           >
             <option value="" disabled>
               Select a provider
             </option>
-            {providers.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
+            {(() => {
+              const seen = new Set<string>();
+              return providers
+                .map((p) => {
+                  const key = getProviderGroupKey(p);
+                  if (seen.has(key)) return null;
+                  seen.add(key);
+                  const count = providers.filter((q) => getProviderGroupKey(q) === key).length;
+                  const label = count > 1 ? `${p.name} (${count} keys)` : p.name;
+                  return (
+                    <option key={key} value={key}>
+                      {label}
+                    </option>
+                  );
+                })
+                .filter(Boolean);
+            })()}
           </select>
         )}
       </section>

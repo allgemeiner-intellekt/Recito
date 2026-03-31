@@ -1,7 +1,7 @@
 import type { AppSettings } from './types';
 
 export const DEFAULT_SETTINGS: AppSettings = {
-  activeProviderId: null,
+  activeProviderGroup: null,
   activeVoiceId: null,
   playback: {
     defaultSpeed: 1.0,

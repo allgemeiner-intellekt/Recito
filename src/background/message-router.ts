@@ -15,7 +15,8 @@ import {
 } from './orchestrator';
 import { playbackState } from './playback-state';
 import { getProvider } from '@providers/registry';
-import { getProviders, setActiveProvider } from '@shared/storage';
+import { getProviders, setActiveProviderGroup } from '@shared/storage';
+import { getAllHealth, clearHealth } from './failover';
 
 export async function routeMessage(
   message: ExtensionMessage,
@@ -154,7 +155,7 @@ export async function routeMessage(
 
       case MSG.SET_ACTIVE_PROVIDER: {
         try {
-          await setActiveProvider(message.configId);
+          await setActiveProviderGroup(message.groupKey);
           sendResponse({ ok: true });
         } catch (err) {
           sendResponse({ error: String(err) });
@@ -165,6 +166,18 @@ export async function routeMessage(
       case MSG.SYNTHESIZE: {
         // Not used directly (orchestrator handles synthesis internally)
         sendResponse({ error: 'Use PLAY to start playback' });
+        break;
+      }
+
+      // === Health & Failover ===
+      case MSG.GET_PROVIDER_HEALTH: {
+        sendResponse(getAllHealth());
+        break;
+      }
+
+      case MSG.RESET_PROVIDER_HEALTH: {
+        clearHealth(message.configId);
+        sendResponse({ ok: true });
         break;
       }
 

@@ -1,5 +1,6 @@
 import type { TTSProvider, ProviderConfig, Voice, SynthesisResult, SynthesisOptions } from '@shared/types';
 import { hasLikelyValidApiKeyFormat } from './api-key-format';
+import { ApiError } from '@shared/api-error';
 
 const DEFAULT_BASE_URL = 'https://api.elevenlabs.io';
 const DEFAULT_MODEL_ID = 'eleven_multilingual_v2';
@@ -98,28 +99,31 @@ export const elevenlabsProvider: TTSProvider = {
       };
     }
 
-    const response = await fetch(`${baseUrl}/v1/text-to-speech/${voice.id}/stream`, {
-      method: 'POST',
-      headers: {
-        'xi-api-key': apiKey,
-        'Content-Type': 'application/json',
-        'Accept': `audio/${format}`,
-      },
-      body: JSON.stringify(body),
-    });
+    let response: Response;
+    try {
+      response = await fetch(`${baseUrl}/v1/text-to-speech/${voice.id}/stream`, {
+        method: 'POST',
+        headers: {
+          'xi-api-key': apiKey,
+          'Content-Type': 'application/json',
+          'Accept': `audio/${format}`,
+        },
+        body: JSON.stringify(body),
+      });
+    } catch (err) {
+      throw ApiError.fromNetworkError(err, 'elevenlabs');
+    }
 
     if (!response.ok) {
       const errBody = await response.text().catch(() => '');
       const detail = getElevenLabsErrorMessage(errBody);
       if (response.status === 401) {
-        throw new Error(detail || 'ElevenLabs rejected the API request with a 401 error.');
+        throw new ApiError(detail || 'ElevenLabs rejected the API request with a 401 error.', 401, 'elevenlabs', false);
       }
       if (response.status === 429) {
-        throw new Error('Rate limit exceeded. Please try again later.');
+        throw new ApiError('Rate limit exceeded. Please try again later.', 429, 'elevenlabs', true);
       }
-      throw new Error(
-        `ElevenLabs TTS error ${response.status}: ${detail || response.statusText}`,
-      );
+      throw ApiError.fromResponse(response.status, detail || response.statusText, 'elevenlabs');
     }
 
     const audioData = await response.arrayBuffer();

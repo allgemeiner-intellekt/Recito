@@ -35,7 +35,8 @@ function isContentMessage(message: ExtensionMessage): boolean {
     message.type === MSG.WORD_TIMING ||
     message.type === MSG.PLAYBACK_ERROR ||
     message.type === MSG.START_READING ||
-    message.type === MSG.STOP
+    message.type === MSG.STOP ||
+    message.type === MSG.FAILOVER_NOTICE
   );
 }
 
@@ -200,6 +201,13 @@ async function handleMessage(message: ExtensionMessage): Promise<unknown> {
       highlightManager = null;
       destroyAutoScroll();
       store._setPlaybackStatus('idle');
+      return { ok: true };
+    }
+
+    case MSG.FAILOVER_NOTICE: {
+      if ('toConfigName' in message) {
+        store._showToast(`Switched to backup key: ${message.toConfigName}`);
+      }
       return { ok: true };
     }
   }

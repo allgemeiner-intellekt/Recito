@@ -3,7 +3,7 @@ import { PROVIDER_LIST } from '@providers/registry';
 import type { ProviderConfig } from '@shared/types';
 import { sendMessage } from '@shared/messages';
 import { MSG } from '@shared/messages';
-import { saveProvider, setActiveProvider, getSettings, saveSettings, generateId } from '@shared/storage';
+import { saveProvider, setActiveProviderGroup, getProviderGroupKey, getSettings, saveSettings, generateId } from '@shared/storage';
 
 export function Onboarding() {
   const [currentStep, setCurrentStep] = useState(0);
@@ -137,9 +137,9 @@ function StepProvider({ onNext, onSkip }: { onNext: () => void; onSkip: () => vo
         setTestResult('success');
         setTestMessage('Connection successful!');
 
-        // Save provider and set as active
+        // Save provider and set its group as active
         await saveProvider(config);
-        await setActiveProvider(config.id);
+        await setActiveProviderGroup(getProviderGroupKey(config));
         setSaved(true);
       } else {
         setTestResult('error');

@@ -118,7 +118,9 @@ export interface PlaybackSettings {
 }
 
 export interface AppSettings {
-  activeProviderId: string | null;
+  /** @deprecated Use activeProviderGroup instead. Kept for migration only. */
+  activeProviderId?: string | null;
+  activeProviderGroup: string | null;
   activeVoiceId: string | null;
   playback: PlaybackSettings;
   highlight: HighlightSettings;

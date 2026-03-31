@@ -24,6 +24,7 @@ export function FloatingToolbar() {
     toolbarVisible,
     toolbarExpanded,
     providerName,
+    toastMessage,
     play,
     pause,
     resume,
@@ -43,6 +44,10 @@ export function FloatingToolbar() {
   const isPlaying = playbackStatus === 'playing';
   const isLoading = playbackStatus === 'loading';
 
+  const toast = toastMessage ? (
+    <div className="ir-toast">{toastMessage}</div>
+  ) : null;
+
   const handlePlayPause = () => {
     if (isPlaying) {
       pause();
@@ -60,6 +65,8 @@ export function FloatingToolbar() {
 
   if (toolbarExpanded) {
     return (
+      <>
+      {toast}
       <div
         ref={toolbarRef}
         className="ir-toolbar ir-toolbar--expanded"
@@ -115,11 +122,14 @@ export function FloatingToolbar() {
           <StopButton onClick={handleClose} />
         </div>
       </div>
+      </>
     );
   }
 
   // Collapsed state
   return (
+    <>
+    {toast}
     <div
       ref={toolbarRef}
       className="ir-toolbar ir-toolbar--collapsed"
@@ -140,5 +150,6 @@ export function FloatingToolbar() {
       <CloseButton onClick={handleClose} />
       <ExpandButton expanded={toolbarExpanded} onClick={toggleExpanded} />
     </div>
+    </>
   );
 }

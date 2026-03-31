@@ -529,6 +529,62 @@ body {
   color: var(--accent);
 }
 
+/* ---- Health Indicators ---- */
+.health-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.health-dot--healthy {
+  background: var(--success);
+}
+
+.health-dot--cooldown {
+  background: #eab308;
+}
+
+.health-dot--failed {
+  background: var(--danger);
+}
+
+.health-info {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 2px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.health-info .btn-sm {
+  padding: 2px 6px;
+  font-size: 10px;
+}
+
+/* ---- Provider Group Header ---- */
+.provider-group-header {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-muted);
+  padding: 10px 0 4px;
+  margin-top: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.provider-group-header:first-child {
+  margin-top: 0;
+}
+
+.provider-group-header .badge {
+  font-size: 10px;
+}
+
 /* ---- Confirm ---- */
 .confirm-row {
   display: flex;

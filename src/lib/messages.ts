@@ -40,6 +40,11 @@ export const MSG = {
   GET_PAGE_INFO: 'GET_PAGE_INFO',
   START_READING: 'START_READING',
 
+  // Health & Failover
+  GET_PROVIDER_HEALTH: 'GET_PROVIDER_HEALTH',
+  RESET_PROVIDER_HEALTH: 'RESET_PROVIDER_HEALTH',
+  FAILOVER_NOTICE: 'FAILOVER_NOTICE',
+
   // Settings
   SETTINGS_CHANGED: 'SETTINGS_CHANGED',
 } as const;
@@ -180,7 +185,7 @@ export interface ValidateKeyMessage {
 
 export interface SetActiveProviderMessage {
   type: typeof MSG.SET_ACTIVE_PROVIDER;
-  configId: string;
+  groupKey: string;
 }
 
 // --- Page Info Messages ---
@@ -191,6 +196,24 @@ export interface GetPageInfoMessage {
 
 export interface StartReadingMessage {
   type: typeof MSG.START_READING;
+}
+
+// --- Health & Failover Messages ---
+
+export interface GetProviderHealthMessage {
+  type: typeof MSG.GET_PROVIDER_HEALTH;
+}
+
+export interface ResetProviderHealthMessage {
+  type: typeof MSG.RESET_PROVIDER_HEALTH;
+  configId: string;
+}
+
+export interface FailoverNoticeMessage {
+  type: typeof MSG.FAILOVER_NOTICE;
+  fromConfig: string;
+  toConfig: string;
+  toConfigName: string;
 }
 
 // --- Settings Messages ---
@@ -228,6 +251,9 @@ export type ExtensionMessage =
   | SetActiveProviderMessage
   | GetPageInfoMessage
   | StartReadingMessage
+  | GetProviderHealthMessage
+  | ResetProviderHealthMessage
+  | FailoverNoticeMessage
   | SettingsChangedMessage;
 
 // Helper to send a message and get a typed response
