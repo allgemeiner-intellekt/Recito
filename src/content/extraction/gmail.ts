@@ -1,24 +1,31 @@
 import type { ExtractionResult } from '@shared/types';
 
+export function isGmail(): boolean {
+  return window.location.hostname === 'mail.google.com';
+}
+
 export function extractGmail(): ExtractionResult | null {
-  // Try expanded email body first, then fallback
+  if (!isGmail()) return null;
+
+  // Primary selector: expanded email body
   const emailBody =
-    document.querySelector('div.a3s.aiL') ??
-    document.querySelector('div.a3s');
+    document.querySelector<HTMLElement>('.a3s.aiL') ??
+    document.querySelector<HTMLElement>('.ii.gt');
 
   if (!emailBody) return null;
 
-  const text = emailBody.textContent?.trim() ?? '';
-  if (!text) return null;
+  const textContent = emailBody.innerText.trim();
+  if (!textContent) return null;
 
-  // Get subject line
-  const subject = document.querySelector('h2.hP')?.textContent ?? document.title;
+  // Try to get the subject line
+  const subjectEl = document.querySelector<HTMLElement>('h2[data-thread-perm-id]');
+  const title = subjectEl?.innerText.trim() ?? document.title;
 
   return {
-    title: subject,
+    title,
     html: emailBody.innerHTML,
-    textContent: text,
-    wordCount: text.split(/\s+/).filter((w) => w.length > 0).length,
+    textContent,
+    wordCount: textContent.split(/\s+/).filter(Boolean).length,
     sourceElement: emailBody,
   };
 }

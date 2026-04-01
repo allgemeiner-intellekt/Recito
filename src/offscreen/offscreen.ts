@@ -1,66 +1,70 @@
 import { MSG, type ExtensionMessage } from '@shared/messages';
 import { AudioPlayer } from './audio-player';
 
-const audioEl = document.getElementById('audio') as HTMLAudioElement;
-const player = new AudioPlayer(audioEl);
+console.log('Immersive Reader: offscreen document loaded');
+
+const player = new AudioPlayer();
+
+function isOffscreenMessage(message: ExtensionMessage): boolean {
+  return (
+    message.type === MSG.OFFSCREEN_PLAY ||
+    message.type === MSG.OFFSCREEN_PAUSE ||
+    message.type === MSG.OFFSCREEN_RESUME ||
+    message.type === MSG.OFFSCREEN_STOP ||
+    message.type === MSG.OFFSCREEN_SET_SPEED ||
+    message.type === MSG.OFFSCREEN_SET_VOLUME
+  );
+}
+
+// Convert base64 string back to ArrayBuffer
+function base64ToArrayBuffer(base64: string): ArrayBuffer {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes.buffer;
+}
 
 chrome.runtime.onMessage.addListener(
   (message: ExtensionMessage, _sender, sendResponse) => {
+    if (!isOffscreenMessage(message)) {
+      return false;
+    }
+
     handleMessage(message).then(sendResponse).catch((err) => {
       sendResponse({ error: String(err) });
     });
     return true;
-  }
+  },
 );
 
 async function handleMessage(message: ExtensionMessage): Promise<unknown> {
   switch (message.type) {
-    case MSG.PLAY_SEGMENT:
-      // Fire-and-forget: don't await, return immediately (Bug F fix)
-      player.playSegment(
-        message.text,
-        message.settings,
-        message.segmentId
-      ).catch((err) => {
-        // AbortErrors are expected when transitioning between segments
-        // (cleanup() aborts the previous fetch) — don't report them
-        if (err instanceof DOMException && err.name === 'AbortError') return;
-        const errorMsg = err instanceof TypeError
-          ? `Network error: ${err.message}`
-          : String(err);
-        chrome.runtime.sendMessage({
-          type: MSG.PLAYBACK_ERROR,
-          error: errorMsg,
-          segmentId: message.segmentId,
-        }).catch(() => {});
-      });
+    case MSG.OFFSCREEN_PLAY: {
+      const audioData = base64ToArrayBuffer(message.audioBase64);
+      await player.play(audioData, message.chunkIndex, message.format);
       return { ok: true };
+    }
 
-    case MSG.PREFETCH_SEGMENT:
-      player.prefetch(message.text, message.settings, message.segmentId);
-      return { ok: true };
-
-    case MSG.PAUSE:
+    case MSG.OFFSCREEN_PAUSE:
       player.pause();
       return { ok: true };
 
-    case MSG.RESUME:
+    case MSG.OFFSCREEN_RESUME:
       player.resume();
       return { ok: true };
 
-    case MSG.STOP:
+    case MSG.OFFSCREEN_STOP:
       player.stop();
       return { ok: true };
 
-    case MSG.SET_SPEED:
+    case MSG.OFFSCREEN_SET_SPEED:
       player.setSpeed(message.speed);
       return { ok: true };
 
-    case MSG.SEEK_TO_TIME:
-      player.seekTo(message.time);
-      return { ok: true };
-
-    default:
+    case MSG.OFFSCREEN_SET_VOLUME:
+      player.setVolume(message.volume);
       return { ok: true };
   }
 }

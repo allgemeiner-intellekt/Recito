@@ -1,19 +1,21 @@
 import type { ExtractionResult } from '@shared/types';
+import { isGmail, extractGmail } from './gmail';
 import { extractGeneric } from './generic';
-import { extractGmail } from './gmail';
 
-export function isGmail(): boolean {
-  return window.location.hostname === 'mail.google.com';
-}
-
+/**
+ * Main extraction orchestrator.
+ * Tries Gmail-specific extraction first (if on Gmail), then generic Readability.
+ */
 export function extractContent(): ExtractionResult | null {
   try {
     if (isGmail()) {
-      return extractGmail();
+      const gmailResult = extractGmail();
+      if (gmailResult) return gmailResult;
     }
+
     return extractGeneric();
   } catch (err) {
-    console.error('Immersive Reader: extraction failed', err);
+    console.error('[ImmersiveReader] Content extraction failed:', err);
     return null;
   }
 }

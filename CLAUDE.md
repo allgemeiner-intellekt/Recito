@@ -1,20 +1,28 @@
 # Immersive Reader
 
-Chrome Extension (MV3) — AI-powered TTS with real-time word/sentence highlighting. Uses OpenAI-compatible TTS endpoints (designed for `openai-edge-tts` at `localhost:5050`).
+Open-source Chrome extension (Manifest V3) for text-to-speech with BYOK (Bring Your Own Key). Inspired by Speechify but supports Groq, ElevenLabs, OpenAI, and any OpenAI-compatible TTS provider.
+
+## Tech stack
+
+TypeScript 5 (strict), React 18, Vite 5 + @crxjs/vite-plugin, Zustand 5, Vitest
 
 ## Commands
 
-```bash
-npm run dev        # Vite dev + HMR (load dist/ as unpacked extension)
-npm run build      # tsc + vite build → dist/
-```
+- `npm run dev` — dev build with hot reload
+- `npm run build` — production build (`tsc && vite build`, output in `dist/`)
+- `npm run typecheck` — type-check only
+- `npm run lint` — ESLint
+- `npm run test` — Vitest
 
-## Architecture
+## Path aliases
 
-Three isolated Chrome extension contexts, communicating via `chrome.runtime` message passing:
+- `@shared/*` → `src/lib/*`
+- `@providers/*` → `src/providers/*`
 
-- **Content Script** — React app in Shadow DOM (`mount.tsx`), text extraction, word/sentence highlighting, player UI. Highlighting and play-button injection operate on the host page DOM directly; the React tree lives entirely inside the Shadow DOM.
-- **Service Worker** — Pure message router; never processes messages, only forwards between content script and offscreen document.
-- **Offscreen Document** — TTS fetch + MSE audio streaming (`MediaSource` → `SourceBuffer`). Prefetch uses its own `AbortController` separate from active playback.
+## Key architecture
 
-All messages typed as discriminated union on `type` in `src/shared/messages.ts`. `SEGMENT_COMPLETE` and `PLAYBACK_ERROR` handlers validate `segmentId` against current segment — stale messages from previous segments are silently ignored.
+- **Message passing**: All inter-context communication via typed messages (`src/lib/messages.ts`, `MSG` enum). Background ↔ content ↔ offscreen.
+- **TTS flow**: Content extracts text → chunker splits into 15-25 word chunks → background orchestrator sends chunks to TTS provider → audio played in offscreen document → playback progress drives word highlighting.
+- **Highlighting**: `buildTextNodeMap()` walks live DOM text nodes and records character offsets. `HighlightManager` creates Ranges from these offsets. Chunk offsets are recomputed against the DOM text map (not Readability text) to avoid misalignment.
+- **Word timing**: Providers with real word-level timing data use it directly. Otherwise, interpolation uses character-weighted word durations (longer words get proportionally more time).
+- **Storage**: Provider configs and settings in `chrome.storage.local` (never sync).

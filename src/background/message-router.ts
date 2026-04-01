@@ -1,81 +1,206 @@
 import { MSG, type ExtensionMessage } from '@shared/messages';
+import type { ProviderConfig } from '@shared/types';
 import { ensureOffscreenDocument } from './offscreen-manager';
-
-let activeTabId: number | null = null;
-const segmentToTabId = new Map<number, number>();
-
-const CONTENT_TO_OFFSCREEN: Set<string> = new Set([
-  MSG.PLAY_SEGMENT,
-  MSG.PAUSE,
-  MSG.RESUME,
-  MSG.STOP,
-  MSG.SET_SPEED,
-  MSG.PREFETCH_SEGMENT,
-  MSG.SEEK_TO_TIME,
-]);
-
-const OFFSCREEN_TO_CONTENT: Set<string> = new Set([
-  MSG.PLAYBACK_PROGRESS,
-  MSG.SEGMENT_COMPLETE,
-  MSG.PLAYBACK_ERROR,
-]);
+import {
+  startPlayback,
+  pausePlayback,
+  resumePlayback,
+  stopPlayback,
+  skipForward,
+  skipBackward,
+  setSpeed,
+  setVolume,
+  getActiveTab,
+  handlePlaybackProgress,
+} from './orchestrator';
+import { playbackState } from './playback-state';
+import { getProvider } from '@providers/registry';
+import { getElevenLabsUsage } from '@providers/elevenlabs';
+import { getProviders, setActiveProviderGroup } from '@shared/storage';
+import { getAllHealth, clearHealth } from './failover';
 
 export async function routeMessage(
   message: ExtensionMessage,
   sender: chrome.runtime.MessageSender,
-  sendResponse: (response?: unknown) => void
+  sendResponse: (response?: unknown) => void,
 ): Promise<void> {
   try {
-    if (CONTENT_TO_OFFSCREEN.has(message.type)) {
-      // Message from content script → forward to offscreen
-      if (sender.tab?.id != null) {
-        activeTabId = sender.tab.id;
-        if ('segmentId' in message && typeof message.segmentId === 'number') {
-          segmentToTabId.set(message.segmentId, sender.tab.id);
+    switch (message.type) {
+      // === Transport controls (from popup/content/toolbar) ===
+      case MSG.PLAY: {
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        if (tab?.id) {
+          startPlayback(tab.id, message.fromSelection).catch(console.error);
+          sendResponse({ ok: true });
+        } else {
+          sendResponse({ error: 'No active tab' });
         }
-        if (message.type === MSG.STOP) {
-          segmentToTabId.clear();
-        }
+        break;
       }
-      await ensureOffscreenDocument();
-      // Fire-and-forget: don't block on offscreen response (Bug F fix)
-      chrome.runtime.sendMessage(message).catch(console.error);
-      sendResponse({ ok: true });
-    } else if (OFFSCREEN_TO_CONTENT.has(message.type)) {
-      // Message from offscreen → forward to content script
-      const targetTabId =
-        'segmentId' in message && typeof message.segmentId === 'number'
-          ? (segmentToTabId.get(message.segmentId) ?? activeTabId)
-          : activeTabId;
 
-      if (targetTabId !== null) {
+      case MSG.START_READING: {
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        if (tab?.id) {
+          startPlayback(tab.id).catch(console.error);
+          sendResponse({ ok: true });
+        } else {
+          sendResponse({ error: 'No active tab' });
+        }
+        break;
+      }
+
+      case MSG.PAUSE:
+        pausePlayback();
+        sendResponse({ ok: true });
+        break;
+
+      case MSG.RESUME:
+        resumePlayback().catch(console.error);
+        sendResponse({ ok: true });
+        break;
+
+      case MSG.STOP:
+        stopPlayback();
+        sendResponse({ ok: true });
+        break;
+
+      case MSG.SKIP_FORWARD:
+        skipForward().catch(console.error);
+        sendResponse({ ok: true });
+        break;
+
+      case MSG.SKIP_BACKWARD:
+        skipBackward().catch(console.error);
+        sendResponse({ ok: true });
+        break;
+
+      case MSG.SET_SPEED:
+        setSpeed(message.speed);
+        sendResponse({ ok: true });
+        break;
+
+      case MSG.SET_VOLUME:
+        setVolume(message.volume);
+        sendResponse({ ok: true });
+        break;
+
+      case MSG.GET_STATE:
+        sendResponse(playbackState.getState());
+        break;
+
+      // === Offscreen → SW: relay progress/completion/errors to content script ===
+      case MSG.PLAYBACK_PROGRESS: {
+        handlePlaybackProgress(message.currentTime, message.duration, message.chunkIndex);
+        const tabId = getActiveTab();
+        if (tabId) {
+          chrome.tabs.sendMessage(tabId, message).catch(() => {});
+        }
+        sendResponse({ ok: true });
+        break;
+      }
+
+      case MSG.CHUNK_COMPLETE:
+      case MSG.PLAYBACK_ERROR:
+      case MSG.WORD_TIMING: {
+        const targetTab = getActiveTab();
+        if (targetTab) {
+          chrome.tabs.sendMessage(targetTab, message).catch(() => {});
+        }
+        sendResponse({ ok: true });
+        break;
+      }
+
+      // === Content extraction (popup → content script) ===
+      case MSG.EXTRACT_CONTENT:
+      case MSG.GET_CHUNK:
+      case MSG.GET_PAGE_INFO: {
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        if (tab?.id) {
+          const response = await chrome.tabs.sendMessage(tab.id, message);
+          sendResponse(response);
+        } else {
+          sendResponse({ error: 'No active tab' });
+        }
+        break;
+      }
+
+      // === Provider management — actually execute provider operations ===
+      case MSG.VALIDATE_KEY: {
         try {
-          await chrome.tabs.sendMessage(targetTabId, message);
-
-          // Drop completed segments to avoid unbounded growth.
-          if (message.type === MSG.SEGMENT_COMPLETE || message.type === MSG.PLAYBACK_ERROR) {
-            segmentToTabId.delete(message.segmentId);
-          }
-        } catch {
-          // Tab may have been closed
-          segmentToTabId.clear();
-          if (targetTabId === activeTabId) {
-            activeTabId = null;
-          }
+          const provider = getProvider(message.config.providerId);
+          const isValid = await provider.validateKey(message.config);
+          sendResponse(isValid);
+        } catch (err) {
+          sendResponse(false);
         }
+        break;
       }
-      sendResponse({ ok: true });
-    } else if (message.type === MSG.GET_PAGE_INFO || message.type === MSG.START_READING) {
-      // Popup → content script
-      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-      if (tab?.id) {
-        const response = await chrome.tabs.sendMessage(tab.id, message);
-        sendResponse(response);
-      } else {
-        sendResponse({ error: 'No active tab' });
+
+      case MSG.LIST_VOICES: {
+        try {
+          // providerId here is the config ID, find the actual config
+          const providers = await getProviders();
+          const config = providers.find((p) => p.id === message.providerId);
+          if (!config) {
+            sendResponse({ error: 'Provider config not found' });
+            break;
+          }
+          const provider = getProvider(config.providerId);
+          const voices = await provider.listVoices(config);
+          sendResponse(voices);
+        } catch (err) {
+          sendResponse({ error: err instanceof Error ? err.message : String(err) });
+        }
+        break;
       }
-    } else {
-      sendResponse({ error: 'Unknown message type' });
+
+      case MSG.SET_ACTIVE_PROVIDER: {
+        try {
+          await setActiveProviderGroup(message.groupKey);
+          sendResponse({ ok: true });
+        } catch (err) {
+          sendResponse({ error: String(err) });
+        }
+        break;
+      }
+
+      case MSG.SYNTHESIZE: {
+        // Not used directly (orchestrator handles synthesis internally)
+        sendResponse({ error: 'Use PLAY to start playback' });
+        break;
+      }
+
+      // === Provider Usage ===
+      case MSG.GET_PROVIDER_USAGE: {
+        try {
+          const providers = await getProviders();
+          const config = providers.find((p) => p.id === message.configId);
+          if (!config || config.providerId !== 'elevenlabs') {
+            sendResponse({ error: 'Not an ElevenLabs config' });
+            break;
+          }
+          const usage = await getElevenLabsUsage(config);
+          sendResponse(usage);
+        } catch (err) {
+          sendResponse({ error: err instanceof Error ? err.message : String(err) });
+        }
+        break;
+      }
+
+      // === Health & Failover ===
+      case MSG.GET_PROVIDER_HEALTH: {
+        sendResponse(getAllHealth());
+        break;
+      }
+
+      case MSG.RESET_PROVIDER_HEALTH: {
+        clearHealth(message.configId);
+        sendResponse({ ok: true });
+        break;
+      }
+
+      default:
+        sendResponse({ error: 'Unknown message type' });
     }
   } catch (err) {
     console.error('Message routing error:', err);

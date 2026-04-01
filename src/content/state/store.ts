@@ -1,60 +1,135 @@
 import { create } from 'zustand';
-import type { TTSSettings, PlaybackState, Segment, TextNodeEntry } from '@shared/types';
-import { DEFAULT_SETTINGS } from '@shared/constants';
-import { loadSettings, saveSettings } from '@shared/storage';
+import type { PlaybackStatus } from '@shared/types';
+import { MSG, sendMessage } from '@shared/messages';
+import { SPEED_PRESETS } from '@shared/constants';
 
-interface Store {
-  settings: TTSSettings;
-  playback: PlaybackState;
-  segments: Segment[];
-  textNodeMap: TextNodeEntry[];
-  error: string | null;
+export interface ToolbarState {
+  // Playback
+  playbackStatus: PlaybackStatus;
+  currentChunkIndex: number;
+  totalChunks: number;
+  chunkProgress: number;
+  speed: number;
+  volume: number;
 
-  setSettings: (settings: Partial<TTSSettings>) => void;
-  setPlayback: (playback: Partial<PlaybackState>) => void;
-  setSegments: (segments: Segment[]) => void;
-  setTextNodeMap: (map: TextNodeEntry[]) => void;
-  setError: (error: string | null) => void;
-  loadPersistedSettings: () => Promise<void>;
+  // UI
+  toolbarVisible: boolean;
+  toolbarExpanded: boolean;
+
+  // Provider info
+  providerName: string;
+
+  // Toast notification
+  toastMessage: string | null;
+
+  // Actions
+  play: () => void;
+  pause: () => void;
+  resume: () => void;
+  stop: () => void;
+  skipForward: () => void;
+  skipBackward: () => void;
+  setSpeed: (speed: number) => void;
+  cycleSpeed: () => void;
+  setVolume: (volume: number) => void;
+  toggleExpanded: () => void;
+  showToolbar: () => void;
+  hideToolbar: () => void;
+
+  // State updates (called from message listeners)
+  _setPlaybackStatus: (status: PlaybackStatus) => void;
+  _setChunkProgress: (progress: number) => void;
+  _setCurrentChunk: (index: number, total?: number) => void;
+  _setTotalChunks: (total: number) => void;
+  _setProviderName: (name: string) => void;
+  _showToast: (message: string) => void;
 }
 
-export const useStore = create<Store>((set, get) => ({
-  settings: { ...DEFAULT_SETTINGS },
-  playback: {
-    isPlaying: false,
-    isPaused: false,
-    currentSegmentIndex: 0,
-    totalSegments: 0,
-    segmentProgress: 0,
-    currentTime: 0,
-    duration: 0,
-    elapsedTime: 0,
-    estimatedTotalTime: 0,
-    completedSegmentsDuration: 0,
-  },
-  segments: [],
-  textNodeMap: [],
-  error: null,
+export const useToolbarStore = create<ToolbarState>((set, get) => ({
+  playbackStatus: 'idle',
+  currentChunkIndex: 0,
+  totalChunks: 0,
+  chunkProgress: 0,
+  speed: 1.0,
+  volume: 1.0,
+  toolbarVisible: false,
+  toolbarExpanded: false,
+  providerName: '',
+  toastMessage: null,
 
-  setSettings: (partial) => {
-    const updated = { ...get().settings, ...partial };
-    set({ settings: updated });
-    saveSettings(updated).catch(console.error);
+  play: () => {
+    sendMessage({ type: MSG.PLAY });
+    set({ playbackStatus: 'loading', toolbarVisible: true });
   },
 
-  setPlayback: (partial) => {
-    set({ playback: { ...get().playback, ...partial } });
+  pause: () => {
+    sendMessage({ type: MSG.PAUSE });
+    set({ playbackStatus: 'paused' });
   },
 
-  setSegments: (segments) => set({ segments }),
-  setTextNodeMap: (textNodeMap) => set({ textNodeMap }),
-  setError: (error) => set({ error }),
+  resume: () => {
+    sendMessage({ type: MSG.RESUME });
+    set({ playbackStatus: 'playing' });
+  },
 
-  loadPersistedSettings: async () => {
-    const settings = await loadSettings();
-    set({ settings });
+  stop: () => {
+    sendMessage({ type: MSG.STOP });
+    set({
+      playbackStatus: 'idle',
+      currentChunkIndex: 0,
+      chunkProgress: 0,
+      toolbarVisible: false,
+      toolbarExpanded: false,
+    });
+  },
+
+  skipForward: () => {
+    sendMessage({ type: MSG.SKIP_FORWARD });
+  },
+
+  skipBackward: () => {
+    sendMessage({ type: MSG.SKIP_BACKWARD });
+  },
+
+  setSpeed: (speed: number) => {
+    sendMessage({ type: MSG.SET_SPEED, speed });
+    set({ speed });
+  },
+
+  cycleSpeed: () => {
+    const { speed } = get();
+    const currentIndex = SPEED_PRESETS.indexOf(speed);
+    const nextIndex = (currentIndex + 1) % SPEED_PRESETS.length;
+    const nextSpeed = SPEED_PRESETS[nextIndex];
+    sendMessage({ type: MSG.SET_SPEED, speed: nextSpeed });
+    set({ speed: nextSpeed });
+  },
+
+  setVolume: (volume: number) => {
+    sendMessage({ type: MSG.SET_VOLUME, volume });
+    set({ volume });
+  },
+
+  toggleExpanded: () => {
+    set((s) => ({ toolbarExpanded: !s.toolbarExpanded }));
+  },
+
+  showToolbar: () => {
+    set({ toolbarVisible: true });
+  },
+
+  hideToolbar: () => {
+    set({ toolbarVisible: false, toolbarExpanded: false });
+  },
+
+  _setPlaybackStatus: (status) => set({ playbackStatus: status }),
+  _setChunkProgress: (progress) => set({ chunkProgress: progress }),
+  _setCurrentChunk: (index, total) =>
+    set((s) => ({ currentChunkIndex: index, totalChunks: total ?? s.totalChunks })),
+  _setTotalChunks: (total) => set({ totalChunks: total }),
+  _setProviderName: (name) => set({ providerName: name }),
+  _showToast: (message) => {
+    set({ toastMessage: message });
+    setTimeout(() => set({ toastMessage: null }), 3000);
   },
 }));
-
-// Load persisted settings on init
-useStore.getState().loadPersistedSettings();

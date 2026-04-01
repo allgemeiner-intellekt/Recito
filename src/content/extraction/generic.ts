@@ -1,163 +1,165 @@
 import { Readability } from '@mozilla/readability';
 import type { ExtractionResult } from '@shared/types';
 
-export function extractGeneric(): ExtractionResult | null {
-  // Clone document before Readability parse (it modifies the DOM)
-  const clone = document.cloneNode(true) as Document;
-  const reader = new Readability(clone);
-  const article = reader.parse();
+// Selectors for elements that should be stripped before scoring
+const NOISE_SELECTORS = [
+  'nav', 'footer', 'header', 'aside',
+  '[role="banner"]', '[role="navigation"]', '[role="complementary"]',
+  '.cookie-banner', '.cookie-notice', '.ad', '.ads', '.advertisement',
+  '.sidebar', '.social-share', '.related-posts', '.comments',
+  '#comments', '.newsletter-signup', '.promo',
+  'script', 'style', 'noscript', 'iframe',
+];
 
-  if (!article) {
-    // Fallback: try article root (no body fallback)
-    const root = findArticleRoot();
-    if (!root) return null;
-    const sourceElement = root as HTMLElement;
-    const text = sourceElement.innerText;
-    if (!text.trim()) return null;
-    return {
-      title: document.title,
-      html: sourceElement.innerHTML,
-      textContent: text,
-      wordCount: countWords(text),
-      sourceElement,
-    };
-  }
-
-  // Find the source element in the live DOM
-  const sourceElement = findArticleRoot();
-
-  // Set textContent to '' — the caller (App.tsx) will use buildTextNodeMap's
-  // text instead, guaranteeing offset alignment with the live DOM.
-  return {
-    title: article.title,
-    html: article.content,
-    textContent: '',
-    wordCount: sourceElement
-      ? countWords((sourceElement as HTMLElement).innerText)
-      : countWords(article.textContent),
-    sourceElement,
-  };
-}
-
-/** High-confidence selectors tried first without scoring */
+// High-confidence article selectors
 const HIGH_CONFIDENCE_SELECTORS = [
   '.mw-parser-output',
   '[itemprop="articleBody"]',
   '[data-article-body]',
 ];
 
-/** Broader candidate selectors scored by heuristics */
+// Broader candidate selectors, in rough priority order
 const CANDIDATE_SELECTORS = [
-  '#mw-content-text',
   'article',
   '[role="main"]',
   'main',
   '.article-body',
-  '.post-content',
   '.article-content',
+  '.post-content',
+  '.post-body',
   '.entry-content',
   '.story-body',
-  '.blog-post',
-  '.td-post-content',
-  '.content',
+  '.content-body',
+  '.page-content',
+  '#article-body',
   '#content',
-  'section',
+  '.content',
 ];
 
-/** Regex patterns for class/ID signals */
-const POSITIVE_SIGNAL = /article|post|entry|content|story|body/i;
-const NEGATIVE_SIGNAL = /sidebar|nav|menu|footer|comment|ad|widget|social|promo|related/i;
-
-export function findArticleRoot(): Element | null {
-  // Phase 1: Try high-confidence selectors first
-  for (const selector of HIGH_CONFIDENCE_SELECTORS) {
-    const el = document.querySelector(selector);
-    if (el && el.textContent && el.textContent.trim().length > 200) {
-      return el;
-    }
-  }
-
-  // Phase 2: Score candidate elements
-  const candidates: { el: Element; score: number }[] = [];
-
-  for (const selector of CANDIDATE_SELECTORS) {
-    const elements = document.querySelectorAll(selector);
-    for (const el of elements) {
-      const text = el.textContent?.trim() ?? '';
-      if (text.length < 100) continue;
-
-      const score = scoreCandidate(el, text);
-      candidates.push({ el, score });
-    }
-  }
-
-  if (candidates.length === 0) return null;
-
-  // Sort by score descending
-  candidates.sort((a, b) => b.score - a.score);
-
-  // Return the best candidate if it has a positive score
-  if (candidates[0].score > 0) {
-    return candidates[0].el;
-  }
-
-  return null;
+function wordCount(text: string): number {
+  return text.split(/\s+/).filter(Boolean).length;
 }
 
-function scoreCandidate(el: Element, text: string): number {
-  let score = 0;
-  const wordCount = countWords(text);
+function stripNoise(root: Element): void {
+  for (const sel of NOISE_SELECTORS) {
+    root.querySelectorAll(sel).forEach((el) => el.remove());
+  }
+}
 
-  // Word count: up to 30 points
-  score += Math.min(wordCount / 10, 30);
+function scoreCandidate(el: Element): number {
+  const text = (el as HTMLElement).innerText ?? el.textContent ?? '';
+  const words = wordCount(text);
+
+  // Base score: word count (more content = better)
+  let score = words;
 
   // Tag bonus
   const tag = el.tagName.toLowerCase();
   if (tag === 'article') score += 25;
-  else if (tag === 'main') score += 15;
-  if (el.getAttribute('role') === 'main') score += 15;
+  if (tag === 'main') score += 15;
 
-  // Class/ID signals
-  const classAndId = `${el.className} ${el.id}`;
-  if (POSITIVE_SIGNAL.test(classAndId)) score += 15;
-  if (NEGATIVE_SIGNAL.test(classAndId)) score -= 30;
+  // Class/id signals
+  const classAndId = `${el.className} ${el.id}`.toLowerCase();
+  if (/article|post|entry|story|content/.test(classAndId)) score += 20;
+  if (/comment|sidebar|footer|header|nav|menu|ad/.test(classAndId)) score -= 30;
 
-  // Paragraph density: reward <p>-heavy content
+  // Paragraph density: boost elements with many <p> children
   const paragraphs = el.querySelectorAll('p');
-  let pTextLength = 0;
-  for (const p of paragraphs) {
-    pTextLength += (p.textContent?.length ?? 0);
-  }
-  const totalTextLength = text.length;
-  if (totalTextLength > 0) {
-    score += (pTextLength / totalTextLength) * 20;
+  const paragraphText = Array.from(paragraphs)
+    .map((p) => p.textContent ?? '')
+    .join(' ');
+  const paragraphWords = wordCount(paragraphText);
+  if (words > 0) {
+    const density = paragraphWords / words;
+    score += density * 30;
   }
 
-  // Link density penalty
+  // Link density penalty: high ratio of link text = navigation, not content
   const links = el.querySelectorAll('a');
-  let linkTextLength = 0;
-  for (const a of links) {
-    linkTextLength += (a.textContent?.length ?? 0);
+  const linkText = Array.from(links)
+    .map((a) => a.textContent ?? '')
+    .join(' ');
+  const linkWords = wordCount(linkText);
+  if (words > 0) {
+    const linkDensity = linkWords / words;
+    if (linkDensity > 0.5) score -= 50;
+    else if (linkDensity > 0.3) score -= 20;
   }
-  if (totalTextLength > 0 && linkTextLength / totalTextLength > 0.3) {
-    score -= 20;
-  }
-
-  // Depth penalty: elements < 2 levels deep from body
-  let depth = 0;
-  let current: Element | null = el;
-  while (current && current !== document.body) {
-    depth++;
-    current = current.parentElement;
-  }
-  if (depth < 2) score -= 10;
 
   return score;
 }
 
-function countWords(text: string): number {
-  return text
-    .trim()
-    .split(/\s+/)
-    .filter((w) => w.length > 0).length;
+/**
+ * Heuristic fallback: find the most likely article root by scoring candidates.
+ */
+function findArticleRoot(): Element | null {
+  // Try high-confidence selectors first
+  for (const sel of HIGH_CONFIDENCE_SELECTORS) {
+    const el = document.querySelector(sel);
+    if (el && wordCount(el.textContent ?? '') > 50) return el;
+  }
+
+  // Score broader candidates
+  let bestEl: Element | null = null;
+  let bestScore = -Infinity;
+
+  for (const sel of CANDIDATE_SELECTORS) {
+    const elements = document.querySelectorAll(sel);
+    for (const el of elements) {
+      const s = scoreCandidate(el);
+      if (s > bestScore) {
+        bestScore = s;
+        bestEl = el;
+      }
+    }
+  }
+
+  // Only accept if score is reasonable
+  if (bestEl && bestScore > 50) return bestEl;
+
+  return null;
+}
+
+/**
+ * Extract article content using Readability with a heuristic fallback.
+ */
+export function extractGeneric(): ExtractionResult | null {
+  // Try Readability first
+  try {
+    const clone = document.cloneNode(true) as Document;
+    const article = new Readability(clone).parse();
+    if (article && article.textContent && wordCount(article.textContent) > 30) {
+      // Find the live DOM element that best matches the extracted article
+      // (Readability works on a clone, so we need to find the corresponding live element)
+      const liveRoot = findArticleRoot();
+      return {
+        title: article.title,
+        html: article.content,
+        textContent: article.textContent,
+        wordCount: wordCount(article.textContent),
+        sourceElement: liveRoot ?? document.body,
+      };
+    }
+  } catch {
+    // Readability failed, fall through to heuristic
+  }
+
+  // Heuristic fallback
+  const root = findArticleRoot();
+  if (!root) return null;
+
+  // Clone root and strip noise for text extraction
+  const cleanRoot = root.cloneNode(true) as Element;
+  stripNoise(cleanRoot);
+
+  const textContent = (cleanRoot as HTMLElement).innerText?.trim() ?? cleanRoot.textContent?.trim() ?? '';
+  if (!textContent || wordCount(textContent) < 30) return null;
+
+  return {
+    title: document.title,
+    html: cleanRoot.innerHTML,
+    textContent,
+    wordCount: wordCount(textContent),
+    sourceElement: root, // live DOM element for highlighting
+  };
 }

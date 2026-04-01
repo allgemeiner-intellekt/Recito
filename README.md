@@ -1,45 +1,84 @@
 # Immersive Reader
 
-A Chrome extension that reads web pages aloud with real-time word and sentence highlighting. Connects to any OpenAI-compatible TTS endpoint — designed for [openai-edge-tts](https://github.com/travisvn/openai-edge-tts) running locally.
+Open-source text-to-speech Chrome extension with Bring Your Own Key (BYOK) support.
 
-## Requirements
+## Features
 
-A running TTS server. The easiest option is [openai-edge-tts](https://github.com/travisvn/openai-edge-tts):
+- **Bring Your Own Keys** - Use OpenAI, ElevenLabs, Groq, or any OpenAI-compatible TTS service
+- **Privacy First** - API keys stored locally in your browser, no data collection, no telemetry
+- **Karaoke-Style Highlighting** - Word-by-word and sentence highlighting with auto-scroll
+- **Floating Toolbar** - Minimal, draggable playback controls on any page
+- **Keyboard Shortcuts** - Full keyboard control for playback
+- **Customizable** - Adjust speed, volume, highlight colors, and more
 
+## Installation
+
+### Chrome Web Store
+
+Coming soon.
+
+### Developer Install
+
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/your-org/immersive-reader.git
+   cd immersive-reader
+   ```
+
+2. Install dependencies:
+   ```bash
+   npm install
+   ```
+
+3. Build the extension:
+   ```bash
+   npm run build
+   ```
+
+4. Load in Chrome:
+   - Open `chrome://extensions`
+   - Enable "Developer mode"
+   - Click "Load unpacked"
+   - Select the `dist` folder
+
+For development with hot reload:
 ```bash
-docker run -p 5050:5050 travisvn/openai-edge-tts
+npm run dev
 ```
-
-## Install
-
-1. Clone this repo and run `npm install && npm run build`
-2. Open `chrome://extensions`, enable **Developer mode**
-3. Click **Load unpacked** and select the `dist/` folder
 
 ## Usage
 
-- Click the extension icon and press **Read this page** in the popup
-- A player capsule appears on the right edge of the screen — click to pause/resume, adjust speed, or stop
-- Click any sentence to jump to that point
+1. Click the Immersive Reader icon in your toolbar
+2. Select a TTS provider and add your API key
+3. Navigate to any web page and click **Play** in the popup or floating toolbar
+4. The page will be read aloud with word-by-word highlighting
 
-## Configuration
+### Supported Providers
 
-Open the extension options (right-click the extension icon → Options):
+| Provider | Description |
+|----------|-------------|
+| **OpenAI** | High-quality TTS with 6 built-in voices |
+| **ElevenLabs** | Premium voice cloning and synthesis |
+| **Groq** | Ultra-fast inference with PlayAI voices |
+| **Custom** | Any OpenAI-compatible TTS endpoint |
 
-| Setting | Default | Notes |
-|---|---|---|
-| API Base URL | `http://localhost:5050` | Don't include `/v1/audio/speech` |
-| API Key | *(empty)* | Optional for local servers |
-| Model | `tts-1` | |
-| Voice | `en-US-AvaNeural` | Edge TTS voice names for openai-edge-tts |
-| Speed | `1.0x` | 0.5× – 2.0× |
+### Keyboard Shortcuts
 
-Use **Test Voice** in the options page to verify your connection before reading.
+| Key | Action |
+|-----|--------|
+| `Space` | Play / Pause |
+| `Escape` | Stop |
+| `ArrowRight` | Skip forward |
+| `ArrowLeft` | Skip backward |
 
-## Build from source
+## Contributing
 
-```bash
-npm install
-npm run build   # outputs to dist/
-npm run dev     # dev server with HMR
-```
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for development setup and guidelines.
+
+## Security
+
+See [SECURITY.md](./SECURITY.md) for information on how API keys are stored and our security practices.
+
+## License
+
+MIT - see [LICENSE](./LICENSE) for details.

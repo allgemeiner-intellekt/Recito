@@ -1,308 +1,163 @@
 import { MSG } from '@shared/messages';
 import { PROGRESS_REPORT_INTERVAL_MS } from '@shared/constants';
-import type { TTSSettings } from '@shared/types';
-
-interface PrefetchedResponse {
-  segmentId: number;
-  response: Response;
-}
 
 export class AudioPlayer {
-  private audioEl: HTMLAudioElement;
-  private mediaSource: MediaSource | null = null;
-  private sourceBuffer: SourceBuffer | null = null;
-  private pendingBuffers: Uint8Array[] = [];
-  private isAppending = false;
-  private fetchController: AbortController | null = null;
+  private ctx: AudioContext | null = null;
+  private gainNode: GainNode | null = null;
+  private sourceNode: AudioBufferSourceNode | null = null;
+  private currentBuffer: AudioBuffer | null = null;
   private progressInterval: ReturnType<typeof setInterval> | null = null;
-  private currentSegmentId = -1;
-  private prefetched: PrefetchedResponse | null = null;
-  private streamDone = false;
-  private hasStartedPlaying = false;
-  private totalBuffered = 0;
-  private prefetchController: AbortController | null = null;
-  private endedListener: (() => void) | null = null;
+  private startTime = 0;
+  private pauseOffset = 0;
+  private isPlaying = false;
+  private currentChunkIndex = -1;
+  private playbackRate = 1.0;
+  private prefetchedBuffers = new Map<number, AudioBuffer>();
 
-  constructor(audioEl: HTMLAudioElement) {
-    this.audioEl = audioEl;
+  private getContext(): AudioContext {
+    if (!this.ctx) {
+      this.ctx = new AudioContext();
+      this.gainNode = this.ctx.createGain();
+      this.gainNode.connect(this.ctx.destination);
+    }
+    return this.ctx;
   }
 
-  async playSegment(
-    text: string,
-    settings: TTSSettings,
-    segmentId: number
-  ): Promise<void> {
-    this.cleanup();
-    this.currentSegmentId = segmentId;
-    this.streamDone = false;
-    this.hasStartedPlaying = false;
-    this.totalBuffered = 0;
+  async play(audioData: ArrayBuffer, chunkIndex: number, format: string): Promise<void> {
+    this.stop();
+    this.currentChunkIndex = chunkIndex;
 
-    // Check for prefetched response
-    let response: Response;
-    if (this.prefetched && this.prefetched.segmentId === segmentId) {
-      response = this.prefetched.response;
-      this.prefetched = null;
+    const ctx = this.getContext();
+    if (ctx.state === 'suspended') {
+      await ctx.resume();
+    }
+
+    let buffer: AudioBuffer;
+
+    // Check prefetch cache
+    const cached = this.prefetchedBuffers.get(chunkIndex);
+    if (cached) {
+      buffer = cached;
+      this.prefetchedBuffers.delete(chunkIndex);
     } else {
-      response = await this.fetchTTS(text, settings);
+      buffer = await ctx.decodeAudioData(audioData.slice(0));
     }
 
-    if (!response.body) {
-      this.sendError('No response body from TTS API', segmentId);
-      return;
-    }
-
-    await this.streamToMSE(response.body, segmentId);
+    this.currentBuffer = buffer;
+    this.pauseOffset = 0;
+    this.startPlayback();
   }
 
-  prefetch(text: string, settings: TTSSettings, segmentId: number): void {
-    // Cancel any existing prefetch
-    if (this.prefetchController) {
-      this.prefetchController.abort();
-    }
-    this.prefetchController = new AbortController();
-
-    this.fetchTTS(text, settings, this.prefetchController.signal)
-      .then((response) => {
-        this.prefetched = { segmentId, response };
-      })
-      .catch((err) => {
-        if (err.name !== 'AbortError') {
-          console.warn('Prefetch failed:', err);
+  async prefetch(audioData: ArrayBuffer, chunkIndex: number, _format: string): Promise<void> {
+    const ctx = this.getContext();
+    try {
+      const buffer = await ctx.decodeAudioData(audioData.slice(0));
+      this.prefetchedBuffers.set(chunkIndex, buffer);
+      // Keep only a few prefetched buffers
+      if (this.prefetchedBuffers.size > 3) {
+        const oldest = this.prefetchedBuffers.keys().next().value;
+        if (oldest !== undefined) {
+          this.prefetchedBuffers.delete(oldest);
         }
-      });
+      }
+    } catch (err) {
+      console.warn('Prefetch decode failed:', err);
+    }
+  }
+
+  private startPlayback(): void {
+    if (!this.currentBuffer || !this.ctx || !this.gainNode) return;
+
+    this.sourceNode = this.ctx.createBufferSource();
+    this.sourceNode.buffer = this.currentBuffer;
+    this.sourceNode.playbackRate.value = this.playbackRate;
+    this.sourceNode.connect(this.gainNode);
+
+    this.sourceNode.onended = () => {
+      if (this.isPlaying) {
+        this.isPlaying = false;
+        this.stopProgressReporting();
+        this.sendMessage({
+          type: MSG.CHUNK_COMPLETE,
+          chunkIndex: this.currentChunkIndex,
+        });
+      }
+    };
+
+    this.sourceNode.start(0, this.pauseOffset);
+    this.startTime = this.ctx.currentTime - this.pauseOffset;
+    this.isPlaying = true;
+    this.startProgressReporting();
   }
 
   pause(): void {
-    this.audioEl.pause();
+    if (!this.isPlaying || !this.ctx || !this.sourceNode) return;
+    this.pauseOffset = (this.ctx.currentTime - this.startTime) * this.playbackRate;
+    this.isPlaying = false;
+    try {
+      this.sourceNode.onended = null;
+      this.sourceNode.stop();
+    } catch {
+      // already stopped
+    }
+    this.sourceNode.disconnect();
+    this.sourceNode = null;
     this.stopProgressReporting();
   }
 
   resume(): void {
-    this.audioEl.play().catch(console.error);
-    this.startProgressReporting();
+    if (this.isPlaying || !this.currentBuffer) return;
+    this.startPlayback();
   }
 
   stop(): void {
-    this.cleanup();
-  }
-
-  seekTo(time: number): void {
-    if (this.audioEl.readyState >= 2) {
-      this.audioEl.currentTime = time;
-    }
-  }
-
-  setSpeed(speed: number): void {
-    this.audioEl.playbackRate = speed;
-  }
-
-  private async fetchTTS(
-    text: string,
-    settings: TTSSettings,
-    signal?: AbortSignal
-  ): Promise<Response> {
-    if (!signal) {
-      this.fetchController = new AbortController();
-      signal = this.fetchController.signal;
-    }
-
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-    };
-    if (settings.apiKey) {
-      headers['Authorization'] = `Bearer ${settings.apiKey}`;
-    }
-
-    const MAX_RETRIES = 3;
-    const TIMEOUT_MS = 45_000;
-
-    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-      const timeoutController = new AbortController();
-      const timer = setTimeout(() => timeoutController.abort(), TIMEOUT_MS);
-
-      // Combine caller's abort signal with our timeout
-      const combinedController = new AbortController();
-      const propagate = () => combinedController.abort();
-      signal.addEventListener('abort', propagate, { once: true });
-      timeoutController.signal.addEventListener('abort', propagate, { once: true });
-
+    this.isPlaying = false;
+    this.stopProgressReporting();
+    if (this.sourceNode) {
       try {
-        const response = await fetch(`${settings.apiUrl}/v1/audio/speech`, {
-          method: 'POST',
-          headers,
-          body: JSON.stringify({
-            model: settings.model,
-            input: text,
-            voice: settings.voice,
-            speed: settings.speed,
-            response_format: 'mp3',
-          }),
-          signal: combinedController.signal,
-        });
-
-        clearTimeout(timer);
-        signal.removeEventListener('abort', propagate);
-
-        if (!response.ok) {
-          throw new Error(`TTS API error: ${response.status} ${response.statusText}`);
-        }
-
-        return response;
-      } catch (err) {
-        clearTimeout(timer);
-        signal.removeEventListener('abort', propagate);
-
-        // User-initiated abort — never retry
-        if (signal.aborted) throw err;
-
-        if (attempt === MAX_RETRIES) throw err;
-
-        await new Promise((r) => setTimeout(r, 450 * attempt));
-      }
-    }
-
-    // unreachable, but satisfies TypeScript
-    throw new Error('fetchTTS: exhausted retries');
-  }
-
-  private async streamToMSE(
-    body: ReadableStream<Uint8Array>,
-    segmentId: number
-  ): Promise<void> {
-    return new Promise<void>((resolve, reject) => {
-      this.mediaSource = new MediaSource();
-      this.audioEl.src = URL.createObjectURL(this.mediaSource);
-
-      this.mediaSource.addEventListener(
-        'sourceopen',
-        async () => {
-          try {
-            this.sourceBuffer = this.mediaSource!.addSourceBuffer('audio/mpeg');
-            this.sourceBuffer.mode = 'sequence';
-
-            this.sourceBuffer.addEventListener('updateend', () => {
-              this.isAppending = false;
-              this.appendNextBuffer();
-              this.tryEndOfStream();
-            });
-
-            // Register ended listener BEFORE stream loop (Bug B fix)
-            if (this.endedListener) {
-              this.audioEl.removeEventListener('ended', this.endedListener);
-              this.endedListener = null;
-            }
-
-            this.endedListener = () => {
-              this.stopProgressReporting();
-              this.sendMessage({
-                type: MSG.SEGMENT_COMPLETE,
-                segmentId,
-              });
-              this.endedListener = null;
-              resolve();
-            };
-
-            this.audioEl.addEventListener('ended', this.endedListener, { once: true });
-
-            const reader = body.getReader();
-
-            while (true) {
-              const { done, value } = await reader.read();
-              if (done) {
-                this.streamDone = true;
-                this.tryEndOfStream();
-                // Start playing if stream ended before buffer threshold
-                if (!this.hasStartedPlaying) {
-                  this.hasStartedPlaying = true;
-                  this.audioEl
-                    .play()
-                    .then(() => this.startProgressReporting())
-                    .catch(console.error);
-                }
-                break;
-              }
-
-              this.pendingBuffers.push(value);
-              this.totalBuffered += value.byteLength;
-              this.appendNextBuffer();
-
-              // Start playing once enough data is buffered (Bug C fix)
-              if (!this.hasStartedPlaying && this.totalBuffered >= 4096) {
-                this.hasStartedPlaying = true;
-                await new Promise((r) => setTimeout(r, 50));
-                this.audioEl
-                  .play()
-                  .then(() => this.startProgressReporting())
-                  .catch(console.error);
-              }
-            }
-          } catch (err) {
-            reject(err);
-          }
-        },
-        { once: true }
-      );
-
-      this.mediaSource.addEventListener(
-        'error',
-        () => {
-          this.sendError('MediaSource error', segmentId);
-          reject(new Error('MediaSource error'));
-        },
-        { once: true }
-      );
-    });
-  }
-
-  private appendNextBuffer(): void {
-    if (
-      this.isAppending ||
-      this.pendingBuffers.length === 0 ||
-      !this.sourceBuffer ||
-      this.sourceBuffer.updating
-    ) {
-      return;
-    }
-
-    this.isAppending = true;
-    const chunk = this.pendingBuffers.shift()!;
-    try {
-      this.sourceBuffer.appendBuffer(chunk as unknown as ArrayBuffer);
-    } catch (err) {
-      console.error('appendBuffer error:', err);
-      this.isAppending = false;
-    }
-  }
-
-  private tryEndOfStream(): void {
-    if (
-      this.streamDone &&
-      this.pendingBuffers.length === 0 &&
-      this.mediaSource &&
-      this.mediaSource.readyState === 'open' &&
-      this.sourceBuffer &&
-      !this.sourceBuffer.updating
-    ) {
-      try {
-        this.mediaSource.endOfStream();
+        this.sourceNode.onended = null;
+        this.sourceNode.stop();
       } catch {
-        // May already be ended
+        // already stopped
       }
+      this.sourceNode.disconnect();
+      this.sourceNode = null;
     }
+    this.currentBuffer = null;
+    this.pauseOffset = 0;
+    this.currentChunkIndex = -1;
+  }
+
+  setSpeed(rate: number): void {
+    this.playbackRate = rate;
+    if (this.sourceNode && this.isPlaying) {
+      this.sourceNode.playbackRate.value = rate;
+    }
+  }
+
+  setVolume(level: number): void {
+    if (this.gainNode) {
+      this.gainNode.gain.value = Math.max(0, Math.min(1, level));
+    }
+  }
+
+  getCurrentTime(): number {
+    if (!this.ctx || !this.isPlaying) return this.pauseOffset;
+    return (this.ctx.currentTime - this.startTime) * this.playbackRate;
+  }
+
+  getDuration(): number {
+    return this.currentBuffer?.duration ?? 0;
   }
 
   private startProgressReporting(): void {
     this.stopProgressReporting();
     this.progressInterval = setInterval(() => {
-      const rawDuration = this.audioEl.duration;
-      const duration = Number.isFinite(rawDuration) && rawDuration > 0 ? rawDuration : 0;
       this.sendMessage({
         type: MSG.PLAYBACK_PROGRESS,
-        currentTime: this.audioEl.currentTime,
-        duration,
-        segmentId: this.currentSegmentId,
-        durationFinal: this.streamDone,
+        currentTime: this.getCurrentTime(),
+        duration: this.getDuration(),
+        chunkIndex: this.currentChunkIndex,
       });
     }, PROGRESS_REPORT_INTERVAL_MS);
   }
@@ -314,60 +169,9 @@ export class AudioPlayer {
     }
   }
 
-  private cleanup(): void {
-    this.stopProgressReporting();
-
-    if (this.fetchController) {
-      this.fetchController.abort();
-      this.fetchController = null;
-    }
-
-    if (this.prefetchController) {
-      this.prefetchController.abort();
-      this.prefetchController = null;
-    }
-
-    if (this.endedListener) {
-      this.audioEl.removeEventListener('ended', this.endedListener);
-      this.endedListener = null;
-    }
-
-    this.audioEl.pause();
-    this.pendingBuffers = [];
-    this.isAppending = false;
-    this.streamDone = false;
-    this.hasStartedPlaying = false;
-    this.totalBuffered = 0;
-
-    if (this.sourceBuffer && this.mediaSource?.readyState === 'open') {
-      try {
-        this.mediaSource.endOfStream();
-      } catch {
-        // ignore
-      }
-    }
-
-    if (this.audioEl.src) {
-      URL.revokeObjectURL(this.audioEl.src);
-      this.audioEl.removeAttribute('src');
-      this.audioEl.load();
-    }
-
-    this.mediaSource = null;
-    this.sourceBuffer = null;
-  }
-
   private sendMessage(message: Record<string, unknown>): void {
     chrome.runtime.sendMessage(message).catch(() => {
       // Service worker may not be listening
-    });
-  }
-
-  private sendError(error: string, segmentId: number): void {
-    this.sendMessage({
-      type: MSG.PLAYBACK_ERROR,
-      error,
-      segmentId,
     });
   }
 }

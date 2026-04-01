@@ -1,90 +1,130 @@
 import type { SentenceBoundary } from '@shared/types';
 
-/** Common abbreviations that should not be treated as sentence endings */
+// Common abbreviations that should not trigger a sentence split
 const ABBREVIATIONS = new Set([
   'mr', 'mrs', 'ms', 'dr', 'prof', 'sr', 'jr', 'st', 'ave', 'blvd',
   'gen', 'gov', 'sgt', 'cpl', 'pvt', 'capt', 'lt', 'col', 'maj',
-  'dept', 'univ', 'est', 'approx', 'inc', 'ltd', 'co', 'corp',
-  'vs', 'etc', 'al', 'fig', 'vol', 'no', 'op', 'ed',
+  'cmdr', 'adm', 'rev', 'hon', 'pres',
+  'dept', 'univ', 'assn', 'bros', 'inc', 'ltd', 'co', 'corp',
   'jan', 'feb', 'mar', 'apr', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec',
+  'mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun',
+  'vol', 'vs', 'etc', 'approx', 'appt', 'est', 'min', 'max',
+  'dept', 'div', 'fig', 'no', 'op', 'pp', 'para',
 ]);
 
-/** Two-letter abbreviations like "e.g.", "i.e.", "U.S." */
-const MULTI_DOT_ABBREVS = /^(?:[a-zA-Z]\.){2,}$/;
+// Multi-character abbreviations like "e.g.", "i.e.", "U.S."
+const MULTI_DOT_ABBREV = /^(?:e\.g|i\.e|a\.m|p\.m|u\.s|u\.k|u\.n)$/i;
+
+function isAbbreviation(word: string): boolean {
+  // Remove trailing period
+  const base = word.replace(/\.$/, '').toLowerCase();
+  if (ABBREVIATIONS.has(base)) return true;
+  if (MULTI_DOT_ABBREV.test(word.replace(/\.$/, ''))) return true;
+
+  // Single uppercase letter followed by period (initials like "J.")
+  if (/^[A-Z]$/.test(base)) return true;
+
+  return false;
+}
+
+function isDecimal(text: string, dotIndex: number): boolean {
+  // Check if the period is between digits: "3.99"
+  if (dotIndex <= 0 || dotIndex >= text.length - 1) return false;
+  return /\d/.test(text[dotIndex - 1]) && /\d/.test(text[dotIndex + 1]);
+}
+
+function isEllipsis(text: string, dotIndex: number): boolean {
+  // Three or more consecutive dots
+  if (dotIndex >= 2 && text[dotIndex - 1] === '.' && text[dotIndex - 2] === '.') return true;
+  if (
+    dotIndex >= 1 &&
+    dotIndex < text.length - 1 &&
+    text[dotIndex - 1] === '.' &&
+    text[dotIndex + 1] === '.'
+  )
+    return true;
+  if (dotIndex < text.length - 2 && text[dotIndex + 1] === '.' && text[dotIndex + 2] === '.')
+    return true;
+  // Unicode ellipsis
+  if (text[dotIndex] === '\u2026') return true;
+  return false;
+}
 
 /**
- * Split text into sentences with better handling of abbreviations,
- * decimals, ellipses, and other tricky cases.
- *
- * A period is a sentence boundary only if:
- * - It's followed by whitespace + uppercase letter (or end of text)
- * - It's NOT preceded by a known abbreviation
- * - It's NOT between digits (decimals like 3.99)
- * - Ellipsis (...) is treated as a single punctuation unit
- *
- * Returns SentenceBoundary[] with offsets relative to baseOffset.
+ * Split text into sentence boundaries with offsets.
  */
-export function splitSentences(text: string, baseOffset = 0): SentenceBoundary[] {
+export function splitSentences(text: string): SentenceBoundary[] {
+  if (!text.trim()) return [];
+
   const boundaries: SentenceBoundary[] = [];
   let sentenceStart = 0;
 
-  let i = 0;
-  while (i < text.length) {
+  // Skip leading whitespace
+  while (sentenceStart < text.length && /\s/.test(text[sentenceStart])) {
+    sentenceStart++;
+  }
+
+  for (let i = 0; i < text.length; i++) {
     const ch = text[i];
 
-    if (ch === '.' || ch === '!' || ch === '?') {
-      // Consume the full punctuation cluster (e.g., "...", "?!", "!!")
-      let punctEnd = i + 1;
-      while (punctEnd < text.length && (text[punctEnd] === '.' || text[punctEnd] === '!' || text[punctEnd] === '?')) {
-        punctEnd++;
+    // Check for sentence-ending punctuation
+    if (ch !== '.' && ch !== '!' && ch !== '?' && ch !== '\u2026') continue;
+
+    // Skip ellipsis
+    if (ch === '.' && isEllipsis(text, i)) continue;
+    if (ch === '\u2026') continue;
+
+    // Skip decimals
+    if (ch === '.' && isDecimal(text, i)) continue;
+
+    // Skip abbreviations: look backwards to find the preceding word
+    if (ch === '.') {
+      let wordStart = i - 1;
+      while (wordStart >= 0 && /[A-Za-z.]/.test(text[wordStart])) {
+        wordStart--;
       }
-
-      // Check if this is a sentence boundary
-      if (isSentenceBoundary(text, i, punctEnd)) {
-        // Consume trailing whitespace
-        let end = punctEnd;
-        while (end < text.length && (text[end] === ' ' || text[end] === '\t')) {
-          end++;
-        }
-
-        const sentenceText = text.slice(sentenceStart, end);
-        if (sentenceText.trim().length > 0) {
-          boundaries.push({
-            text: sentenceText,
-            startOffset: baseOffset + sentenceStart,
-            endOffset: baseOffset + sentenceText.trimEnd().length + sentenceStart,
-          });
-        }
-        sentenceStart = end;
-        i = end;
-        continue;
-      }
-
-      i = punctEnd;
-      continue;
+      const precedingWord = text.slice(wordStart + 1, i + 1);
+      if (isAbbreviation(precedingWord)) continue;
     }
 
-    i++;
-  }
+    // Consume any trailing punctuation (e.g., '!"', '?"', '."')
+    let end = i + 1;
+    while (end < text.length && /['""\u201C\u201D\u2019)}\]]/.test(text[end])) {
+      end++;
+    }
 
-  // Remaining text after last boundary
-  if (sentenceStart < text.length) {
-    const remaining = text.slice(sentenceStart);
-    if (remaining.trim().length > 0) {
-      boundaries.push({
-        text: remaining,
-        startOffset: baseOffset + sentenceStart,
-        endOffset: baseOffset + sentenceStart + remaining.trimEnd().length,
-      });
+    // Check if followed by whitespace then an uppercase letter or end of text
+    let afterPunct = end;
+    while (afterPunct < text.length && /[ \t]/.test(text[afterPunct])) {
+      afterPunct++;
+    }
+
+    const atEnd = afterPunct >= text.length;
+    const nextIsUpper = afterPunct < text.length && /[A-Z\u201C\u2018"'\(]/.test(text[afterPunct]);
+    const hasNewline =
+      end < text.length && text.slice(end, afterPunct).includes('\n');
+
+    if (atEnd || nextIsUpper || hasNewline) {
+      const sentenceText = text.slice(sentenceStart, end).trim();
+      if (sentenceText) {
+        boundaries.push({
+          text: sentenceText,
+          startOffset: sentenceStart,
+          endOffset: end,
+        });
+      }
+      sentenceStart = afterPunct;
+      i = afterPunct - 1; // will be incremented by for loop
     }
   }
 
-  // Fallback: whole text is one sentence
-  if (boundaries.length === 0 && text.trim().length > 0) {
+  // Remaining text as last sentence
+  const remaining = text.slice(sentenceStart).trim();
+  if (remaining) {
     boundaries.push({
-      text,
-      startOffset: baseOffset,
-      endOffset: baseOffset + text.trimEnd().length,
+      text: remaining,
+      startOffset: sentenceStart,
+      endOffset: text.length,
     });
   }
 
@@ -92,100 +132,8 @@ export function splitSentences(text: string, baseOffset = 0): SentenceBoundary[]
 }
 
 /**
- * Also export a simple string[] version for use in segmenter.ts,
- * which needs sentence strings rather than boundary objects.
+ * Convenience: return just sentence strings.
  */
 export function splitSentenceStrings(text: string): string[] {
-  const boundaries = splitSentences(text);
-  return boundaries.map((b) => b.text);
-}
-
-function isSentenceBoundary(text: string, punctStart: number, punctEnd: number): boolean {
-  // Period between digits → decimal (e.g., "3.99", "$12.50")
-  if (text[punctStart] === '.' && punctEnd === punctStart + 1) {
-    if (punctStart > 0 && punctEnd < text.length) {
-      const before = text[punctStart - 1];
-      const after = text[punctEnd];
-      if (/\d/.test(before) && /\d/.test(after)) {
-        return false;
-      }
-    }
-  }
-
-  // Single period: check for abbreviation
-  if (text[punctStart] === '.' && punctEnd === punctStart + 1) {
-    // Find the word before the period
-    const wordBefore = getWordBefore(text, punctStart);
-
-    if (wordBefore) {
-      // Known abbreviation (e.g., "Dr.", "Mr.", "etc.")
-      if (ABBREVIATIONS.has(wordBefore.toLowerCase())) {
-        return false;
-      }
-
-      // Single uppercase letter followed by period (initial: "J. K. Rowling")
-      if (wordBefore.length === 1 && /[A-Z]/.test(wordBefore)) {
-        return false;
-      }
-
-      // Multi-dot abbreviation (e.g., "U.S.", "e.g.")
-      const fullToken = getTokenBefore(text, punctEnd);
-      if (fullToken && MULTI_DOT_ABBREVS.test(fullToken)) {
-        return false;
-      }
-    }
-  }
-
-  // Must be followed by whitespace+uppercase, newline, or end of text to be a boundary
-  if (punctEnd >= text.length) {
-    return true; // End of text
-  }
-
-  // Check what follows the punctuation
-  let afterPunct = punctEnd;
-  // Skip whitespace
-  while (afterPunct < text.length && /\s/.test(text[afterPunct])) {
-    afterPunct++;
-  }
-
-  if (afterPunct >= text.length) {
-    return true; // Only whitespace until end
-  }
-
-  // Next non-whitespace character should be uppercase, quote, or opening bracket
-  const nextChar = text[afterPunct];
-  if (/[A-Z"\u201C\u2018([\u2014\u2013]/.test(nextChar)) {
-    return true;
-  }
-
-  // For ! and ?, be more lenient — these almost always end sentences
-  if (text[punctStart] === '!' || text[punctStart] === '?') {
-    // Unless followed by a closing quote/paren immediately
-    if (/\s/.test(text[punctEnd] || '')) {
-      return true;
-    }
-  }
-
-  return false;
-}
-
-function getWordBefore(text: string, pos: number): string | null {
-  let end = pos;
-  let start = end - 1;
-  while (start >= 0 && /[a-zA-Z]/.test(text[start])) {
-    start--;
-  }
-  start++;
-  if (start >= end) return null;
-  return text.slice(start, end);
-}
-
-function getTokenBefore(text: string, pos: number): string | null {
-  let start = pos - 1;
-  while (start >= 0 && /[a-zA-Z.]/.test(text[start])) {
-    start--;
-  }
-  start++;
-  if (start >= pos) return null;
-  return text.slice(start, pos);
+  return splitSentences(text).map((b) => b.text);
 }

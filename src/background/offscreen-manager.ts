@@ -14,11 +14,8 @@ export async function ensureOffscreenDocument(): Promise<void> {
 
   creating = chrome.offscreen.createDocument({
     url: 'src/offscreen/offscreen.html',
-    reasons: [
-      chrome.offscreen.Reason.AUDIO_PLAYBACK,
-      chrome.offscreen.Reason.BLOBS,
-    ],
-    justification: 'Playing TTS audio via MediaSource Extensions',
+    reasons: [chrome.offscreen.Reason.AUDIO_PLAYBACK, chrome.offscreen.Reason.BLOBS],
+    justification: 'Playing TTS audio via Web Audio API',
   });
 
   await creating;
