@@ -53,9 +53,10 @@ interface ProviderFormData {
   apiKey: string;
   baseUrl: string;
   modelId: string;
+  customModel: string;
 }
 
-const EMPTY_FORM: ProviderFormData = { providerId: 'openai', name: '', apiKey: '', baseUrl: '', modelId: 'eleven_multilingual_v2' };
+const EMPTY_FORM: ProviderFormData = { providerId: 'openai', name: '', apiKey: '', baseUrl: '', modelId: 'eleven_multilingual_v2', customModel: 'tts-1' };
 
 function nextFormState(current: ProviderFormData, partial: Partial<ProviderFormData>): ProviderFormData {
   return { ...current, ...partial };
@@ -76,6 +77,8 @@ function getFormProviderConfig(
   };
   if (trimmedProviderId === 'elevenlabs') {
     config.extraParams = { model_id: form.modelId };
+  } else if (trimmedProviderId === 'custom' && form.customModel.trim()) {
+    config.extraParams = { model: form.customModel.trim() };
   }
   return config;
 }
@@ -231,6 +234,7 @@ export function Options() {
       apiKey: config.apiKey,
       baseUrl: config.baseUrl ?? '',
       modelId: (config.extraParams?.model_id as string) ?? 'eleven_multilingual_v2',
+      customModel: (config.extraParams?.model as string) ?? 'tts-1',
     });
     setTestResult(null);
     setShowForm(true);
@@ -569,19 +573,34 @@ export function Options() {
                   )}
 
                   {form.providerId === 'custom' && (
-                    <label className="form-label">
-                      Base URL
-                      <input
-                        className="form-input"
-                        type="url"
-                        value={form.baseUrl}
-                        onChange={(e) => {
-                          setTestResult(null);
-                          setForm(nextFormState(form, { baseUrl: e.target.value }));
-                        }}
-                        placeholder="https://api.example.com/v1"
-                      />
-                    </label>
+                    <>
+                      <label className="form-label">
+                        Base URL
+                        <input
+                          className="form-input"
+                          type="url"
+                          value={form.baseUrl}
+                          onChange={(e) => {
+                            setTestResult(null);
+                            setForm(nextFormState(form, { baseUrl: e.target.value }));
+                          }}
+                          placeholder="https://api.example.com/v1"
+                        />
+                      </label>
+                      <label className="form-label">
+                        Model
+                        <input
+                          className="form-input"
+                          type="text"
+                          value={form.customModel}
+                          onChange={(e) => {
+                            setTestResult(null);
+                            setForm(nextFormState(form, { customModel: e.target.value }));
+                          }}
+                          placeholder="tts-1"
+                        />
+                      </label>
+                    </>
                   )}
 
                   {testResult && (

@@ -37,8 +37,8 @@ export async function validateOpenAICompatibleSpeech(
       return false;
     }
 
-    const contentType = response.headers.get('content-type');
-    if (contentType && !contentType.toLowerCase().startsWith('audio/')) {
+    const contentType = response.headers.get('content-type')?.toLowerCase() ?? '';
+    if (contentType && !contentType.startsWith('audio/') && !contentType.startsWith('application/octet-stream')) {
       return false;
     }
 

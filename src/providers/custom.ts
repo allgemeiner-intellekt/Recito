@@ -84,7 +84,7 @@ export const customProvider: TTSProvider = {
       },
       {
         model,
-        input: '.',
+        input: 'test',
         voice: voiceId,
         response_format: 'mp3',
       },
