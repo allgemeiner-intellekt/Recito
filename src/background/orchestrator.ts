@@ -23,6 +23,7 @@ interface SynthesizedChunk {
 }
 
 let activeTabId: number | null = null;
+let currentPageUrl: string | undefined;
 const prefetchCache = new Map<number, SynthesizedChunk>();
 const MAX_CACHE_SIZE = 8;
 let abortController: AbortController | null = null;
@@ -179,14 +180,14 @@ export async function startPlayback(tabId: number, fromSelection = false): Promi
 
   // Check for saved reading progress
   let startIndex = 0;
-  let pageUrl: string | undefined;
+  currentPageUrl = undefined;
   try {
-    pageUrl = await sendTabMessage<string>(tabId, { type: MSG.GET_PAGE_URL });
+    currentPageUrl = await sendTabMessage<string>(tabId, { type: MSG.GET_PAGE_URL });
   } catch {
     // Content script may not respond
   }
-  if (pageUrl && !fromSelection) {
-    const saved = await getProgress(pageUrl);
+  if (currentPageUrl && !fromSelection) {
+    const saved = await getProgress(currentPageUrl);
     if (saved && saved.chunkIndex > 0 && saved.chunkIndex < extractResult.totalChunks) {
       startIndex = saved.chunkIndex;
       sendTabMessage(tabId, {
@@ -202,7 +203,7 @@ export async function startPlayback(tabId: number, fromSelection = false): Promi
   });
 
   // Step 2: Start the playback loop
-  await playChunksSequentially(tabId, startIndex, extractResult.totalChunks, pageUrl);
+  await playChunksSequentially(tabId, startIndex, extractResult.totalChunks, currentPageUrl);
 }
 
 export async function resumePlayback(): Promise<void> {
@@ -222,6 +223,11 @@ export function stopPlayback(): void {
   abortController?.abort();
   abortController = null;
   prefetchCache.clear();
+  // Clear saved progress on explicit stop — user is done with this article
+  if (currentPageUrl) {
+    clearProgress(currentPageUrl).catch(() => {});
+    currentPageUrl = undefined;
+  }
   currentSession = null;
   stopWordTimingRelay();
   playbackState.reset();
