@@ -101,7 +101,7 @@ export function splitSentences(text: string): SentenceBoundary[] {
     }
 
     const atEnd = afterPunct >= text.length;
-    const nextIsUpper = afterPunct < text.length && /[A-Z\u201C\u2018"'\(]/.test(text[afterPunct]);
+    const nextIsUpper = afterPunct < text.length && /[A-Z\u201C\u2018"'(]/.test(text[afterPunct]);
     const isCjkTerminator = ch === '\u3002' || ch === '\uFF01' || ch === '\uFF1F';
     const nextIsCjk = afterPunct < text.length && /[\u4E00-\u9FFF\u3400-\u4DBF\u3000-\u303F]/.test(text[afterPunct]);
     const hasNewline =

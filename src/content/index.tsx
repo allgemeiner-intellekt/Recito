@@ -15,6 +15,34 @@ import {
 
 console.log('Immersive Reader: content script loaded');
 
+// Auto-hide toolbar when native media (video/audio) plays
+function setupNativeMediaDetection() {
+  const store = useToolbarStore.getState;
+  let wasVisibleBeforeMedia = false;
+
+  const onNativePlay = () => {
+    const state = store();
+    if (state.toolbarVisible) {
+      wasVisibleBeforeMedia = true;
+      state.hideToolbar();
+    }
+  };
+
+  const onNativePauseOrEnd = () => {
+    if (wasVisibleBeforeMedia) {
+      wasVisibleBeforeMedia = false;
+      store().showToolbar();
+    }
+  };
+
+  // Capture phase to catch events from all media elements
+  document.addEventListener('play', onNativePlay, true);
+  document.addEventListener('pause', onNativePauseOrEnd, true);
+  document.addEventListener('ended', onNativePauseOrEnd, true);
+}
+
+setupNativeMediaDetection();
+
 // Module-level storage for extracted chunks
 let currentChunks: TextChunk[] = [];
 let currentTitle = '';

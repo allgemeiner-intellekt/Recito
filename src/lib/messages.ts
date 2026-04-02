@@ -1,4 +1,4 @@
-import type { ProviderConfig, Voice, PlaybackState, AppSettings, ProviderUsage } from './types';
+import type { ProviderConfig, AppSettings } from './types';
 
 export const MSG = {
   // Transport controls (content/popup → SW → offscreen)

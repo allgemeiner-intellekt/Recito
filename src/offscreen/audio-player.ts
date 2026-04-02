@@ -28,7 +28,7 @@ export class AudioPlayer {
     return this.ctx;
   }
 
-  async play(audioData: ArrayBuffer, chunkIndex: number, format: string): Promise<void> {
+  async play(audioData: ArrayBuffer, chunkIndex: number, _format: string): Promise<void> {
     this.stop();
     this.currentChunkIndex = chunkIndex;
 

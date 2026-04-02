@@ -1,5 +1,5 @@
 import { MSG, sendTabMessage, type ExtensionMessage } from '@shared/messages';
-import type { ProviderConfig, Voice, TextChunk } from '@shared/types';
+import type { TextChunk } from '@shared/types';
 import { getProvider } from '@providers/registry';
 import { getActiveProvider, getSettings, saveProgress, getProgress, clearProgress } from '@shared/storage';
 import { getChunkLimits } from '@providers/registry';

@@ -111,7 +111,7 @@ describe('OpenAI-compatible provider helpers', () => {
         },
         body: JSON.stringify({
           model: 'tts-1',
-          input: '.',
+          input: 'test',
           voice: 'alloy',
           response_format: 'mp3',
         }),

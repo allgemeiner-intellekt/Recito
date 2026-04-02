@@ -1,6 +1,4 @@
 import { MSG, type ExtensionMessage } from '@shared/messages';
-import type { ProviderConfig } from '@shared/types';
-import { ensureOffscreenDocument } from './offscreen-manager';
 import {
   startPlayback,
   pausePlayback,

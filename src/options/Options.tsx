@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import type { ProviderConfig, Voice, AppSettings, ProviderUsage, ThemeMode } from '@shared/types';
 import { PROVIDER_LIST } from '@providers/registry';
 import { ELEVENLABS_MODELS } from '@providers/elevenlabs';
@@ -861,12 +861,9 @@ export function Options() {
             <h1>Keyboard Shortcuts</h1>
             <div className="hotkeys-list">
               {[
-                ['Space', 'Play / Pause'],
-                ['ArrowRight', 'Skip forward'],
-                ['ArrowLeft', 'Skip backward'],
-                ['+', 'Speed up'],
-                ['-', 'Speed down'],
-                ['Escape', 'Stop'],
+                ['Alt+Shift+Space', 'Play / Pause'],
+                ['Alt+Shift+Right', 'Skip forward'],
+                ['Alt+Shift+Left', 'Skip backward'],
               ].map(([key, desc]) => (
                 <div key={key} className="hotkey-row">
                   <kbd className="hotkey-key">{key}</kbd>
@@ -886,6 +883,16 @@ export function Options() {
               <p className="setting-desc">Export all settings and provider configs as JSON.</p>
               <button className="btn" onClick={exportSettings}>
                 Export Settings
+              </button>
+            </div>
+
+            <div className="settings-card">
+              <p className="setting-desc">Re-run the onboarding wizard to set up providers and preferences.</p>
+              <button
+                className="btn"
+                onClick={() => chrome.tabs.create({ url: chrome.runtime.getURL('src/onboarding/index.html') })}
+              >
+                Replay Onboarding
               </button>
             </div>
 
