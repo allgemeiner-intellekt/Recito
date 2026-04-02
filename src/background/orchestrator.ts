@@ -244,8 +244,6 @@ export async function skipForward(): Promise<void> {
     stopPlayback();
     return;
   }
-  // Update index synchronously so rapid skips read fresh state
-  playbackState.update({ currentChunkIndex: nextChunk });
   await skipToChunk(nextChunk);
 }
 
@@ -253,14 +251,12 @@ export async function skipBackward(): Promise<void> {
   const state = playbackState.getState();
   if (state.status === 'idle') return;
   const prevChunk = Math.max(0, state.currentChunkIndex - 1);
-  // Update index synchronously so rapid skips read fresh state
-  playbackState.update({ currentChunkIndex: prevChunk });
   await skipToChunk(prevChunk);
 }
 
 async function skipToChunk(chunkIndex: number): Promise<void> {
   if (!activeTabId) return;
-  const totalChunks = playbackState.getState().totalChunks;
+  const state = playbackState.getState();
 
   stopWordTimingRelay();
   await sendToOffscreen({ type: MSG.OFFSCREEN_STOP });
@@ -269,7 +265,7 @@ async function skipToChunk(chunkIndex: number): Promise<void> {
   abortController = new AbortController();
 
   playbackState.update({ currentChunkIndex: chunkIndex, status: 'loading' });
-  await playChunksSequentially(activeTabId, chunkIndex, totalChunks);
+  await playChunksSequentially(activeTabId, chunkIndex, state.totalChunks);
 }
 
 export function setSpeed(speed: number): void {
