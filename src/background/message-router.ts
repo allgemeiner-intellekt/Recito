@@ -197,6 +197,13 @@ export async function routeMessage(
         break;
       }
 
+      // === Settings ===
+      case MSG.OPEN_OPTIONS: {
+        chrome.runtime.openOptionsPage();
+        sendResponse({ ok: true });
+        break;
+      }
+
       // === Health & Failover ===
       case MSG.GET_PROVIDER_HEALTH: {
         sendResponse(getAllHealth());

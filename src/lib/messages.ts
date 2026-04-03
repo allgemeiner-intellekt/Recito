@@ -56,6 +56,7 @@ export const MSG = {
 
   // Settings
   SETTINGS_CHANGED: 'SETTINGS_CHANGED',
+  OPEN_OPTIONS: 'OPEN_OPTIONS',
 
   // Toolbar UI (SW → content)
   SHOW_TOOLBAR: 'SHOW_TOOLBAR',
@@ -266,6 +267,10 @@ export interface SettingsChangedMessage {
   settings: AppSettings;
 }
 
+export interface OpenOptionsMessage {
+  type: typeof MSG.OPEN_OPTIONS;
+}
+
 export interface ShowToolbarMessage {
   type: typeof MSG.SHOW_TOOLBAR;
   error?: string;
@@ -308,6 +313,7 @@ export type ExtensionMessage =
   | GetPageUrlMessage
   | ResumeFromProgressMessage
   | SettingsChangedMessage
+  | OpenOptionsMessage
   | ShowToolbarMessage;
 
 // Helper to send a message and get a typed response

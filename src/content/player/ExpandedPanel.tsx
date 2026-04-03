@@ -54,7 +54,7 @@ export function ExpandedPanel() {
   );
 
   const openSettings = useCallback(() => {
-    chrome.runtime.openOptionsPage();
+    sendMessage({ type: MSG.OPEN_OPTIONS });
   }, []);
 
   // Build deduplicated provider options
