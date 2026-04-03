@@ -21,11 +21,11 @@ export const DEFAULT_SETTINGS: AppSettings = {
   onboardingComplete: false,
 };
 
-export const SPEED_MIN = 0.5;
-export const SPEED_MAX = 3.0;
+export const SPEED_DEFAULT_MIN = 0.25;
+export const SPEED_DEFAULT_MAX = 4.0;
 export const SPEED_STEP = 0.01;
 export const SPEED_SNAP_THRESHOLD = 0.04;
-export const SPEED_PRESETS = [0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0];
+export const SPEED_PRESETS = [0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0, 3.5, 4.0];
 
 export interface SpeedRange {
   min: number;

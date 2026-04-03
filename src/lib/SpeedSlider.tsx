@@ -1,9 +1,8 @@
 import React, { useCallback, useEffect, useMemo } from 'react';
 import {
-  SPEED_MIN,
-  SPEED_MAX,
+  SPEED_DEFAULT_MIN,
+  SPEED_DEFAULT_MAX,
   SPEED_STEP,
-  SPEED_PRESETS,
   snapSpeed,
   filterPresetsForRange,
   formatSpeed,
@@ -30,8 +29,8 @@ export function SpeedSlider({
 }: SpeedSliderProps) {
   const range = useMemo(() => getProviderSpeedRange(providerId), [providerId]);
 
-  const effectiveMin = range ? Math.max(range.min, SPEED_MIN) : SPEED_MIN;
-  const effectiveMax = range ? Math.min(range.max, SPEED_MAX) : SPEED_MAX;
+  const effectiveMin = range ? range.min : SPEED_DEFAULT_MIN;
+  const effectiveMax = range ? range.max : SPEED_DEFAULT_MAX;
 
   const presets = useMemo(
     () => filterPresetsForRange(effectiveMin, effectiveMax),
