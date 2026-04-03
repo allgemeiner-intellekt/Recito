@@ -125,25 +125,77 @@ export function VolumeSlider({ volume, onChange }: VolumeSliderProps) {
   );
 }
 
-// --- ProgressBar ---
+// --- PlayPauseWithProgress (circular progress ring around play/pause) ---
 
-interface ProgressBarProps {
+interface PlayPauseWithProgressProps {
+  isPlaying: boolean;
+  isLoading: boolean;
+  onClick: () => void;
   progress: number; // 0-1
   chunkIndex: number;
   totalChunks: number;
 }
 
-export function ProgressBar({ progress, chunkIndex, totalChunks }: ProgressBarProps) {
-  // Overall progress: completed chunks + current chunk progress
+const RING_SIZE = 40;
+const STROKE_WIDTH = 2.5;
+const RADIUS = (RING_SIZE - STROKE_WIDTH) / 2;
+const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
+
+export function PlayPauseWithProgress({
+  isPlaying,
+  isLoading,
+  onClick,
+  progress,
+  chunkIndex,
+  totalChunks,
+}: PlayPauseWithProgressProps) {
   const overallProgress =
-    totalChunks > 0 ? (chunkIndex + progress) / totalChunks : 0;
+    totalChunks > 0 ? Math.min((chunkIndex + progress) / totalChunks, 1) : 0;
+  const dashOffset = CIRCUMFERENCE * (1 - overallProgress);
 
   return (
-    <div className="ir-progress" title={`Segment ${chunkIndex + 1} of ${totalChunks}`}>
-      <div
-        className="ir-progress-fill"
-        style={{ width: `${Math.min(overallProgress * 100, 100)}%` }}
-      />
+    <div
+      className="ir-play-progress-wrap"
+      title={`Segment ${chunkIndex + 1} of ${totalChunks}`}
+    >
+      <svg
+        className="ir-progress-ring"
+        width={RING_SIZE}
+        height={RING_SIZE}
+        viewBox={`0 0 ${RING_SIZE} ${RING_SIZE}`}
+      >
+        <circle
+          className="ir-progress-ring__track"
+          cx={RING_SIZE / 2}
+          cy={RING_SIZE / 2}
+          r={RADIUS}
+          fill="none"
+          strokeWidth={STROKE_WIDTH}
+        />
+        <circle
+          className="ir-progress-ring__fill"
+          cx={RING_SIZE / 2}
+          cy={RING_SIZE / 2}
+          r={RADIUS}
+          fill="none"
+          strokeWidth={STROKE_WIDTH}
+          strokeDasharray={CIRCUMFERENCE}
+          strokeDashoffset={dashOffset}
+          strokeLinecap="round"
+        />
+      </svg>
+      <button
+        className="ir-btn ir-play-pause"
+        onClick={onClick}
+        disabled={isLoading}
+        title={isPlaying ? 'Pause' : 'Play'}
+      >
+        {isLoading ? (
+          <span className="ir-spinner" />
+        ) : (
+          <Icon path={isPlaying ? PAUSE_PATH : PLAY_PATH} size={20} />
+        )}
+      </button>
     </div>
   );
 }

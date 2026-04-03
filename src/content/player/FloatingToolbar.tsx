@@ -1,11 +1,10 @@
 import React, { useRef } from 'react';
 import { useToolbarStore } from '../state/store';
 import {
-  PlayPauseButton,
+  PlayPauseWithProgress,
   SkipButton,
   SpeedChip,
   VolumeSlider,
-  ProgressBar,
   CloseButton,
 } from './ToolbarControls';
 import { useDrag } from './useDrag';
@@ -68,17 +67,15 @@ export function FloatingToolbar() {
       onMouseDown={onMouseDown}
     >
       <SkipButton direction="backward" onClick={skipBackward} />
-      <PlayPauseButton
+      <PlayPauseWithProgress
         isPlaying={isPlaying}
         isLoading={isLoading}
         onClick={handlePlayPause}
-      />
-      <SkipButton direction="forward" onClick={skipForward} />
-      <ProgressBar
         progress={chunkProgress}
         chunkIndex={currentChunkIndex}
         totalChunks={totalChunks}
       />
+      <SkipButton direction="forward" onClick={skipForward} />
       <VolumeSlider volume={volume} onChange={setVolume} />
       <SpeedChip speed={speed} onClick={cycleSpeed} />
       <CloseButton onClick={handleClose} />

@@ -80,7 +80,7 @@
 }
 
 .ir-toolbar--collapsed {
-  min-width: 380px;
+  min-width: 320px;
   height: 48px;
   border-radius: 24px;
   display: flex;
@@ -163,22 +163,39 @@
   opacity: 1;
 }
 
-/* --- Progress Bar --- */
+/* --- Circular Progress Ring --- */
 
-.ir-progress {
-  flex: 1;
-  height: 4px;
-  background: var(--ir-progress-track);
-  border-radius: 2px;
-  overflow: hidden;
-  min-width: 60px;
+.ir-play-progress-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
 }
 
-.ir-progress-fill {
-  height: 100%;
-  background: var(--ir-accent);
-  border-radius: 2px;
-  transition: width 0.15s linear;
+.ir-play-progress-wrap .ir-play-pause {
+  position: absolute;
+  width: 32px;
+  height: 32px;
+}
+
+.ir-progress-ring {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform: rotate(-90deg);
+  pointer-events: none;
+}
+
+.ir-progress-ring__track {
+  stroke: var(--ir-progress-track);
+}
+
+.ir-progress-ring__fill {
+  stroke: var(--ir-accent);
+  transition: stroke-dashoffset 0.15s linear;
 }
 
 /* --- Volume --- */
