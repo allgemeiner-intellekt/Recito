@@ -107,6 +107,7 @@ export function ExpandedPanel() {
         onChange={handleSpeedChange}
         providerId={activeProviderId}
         variant="panel"
+        showChips={false}
       />
 
       {/* Reading Progress */}

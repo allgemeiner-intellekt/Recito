@@ -560,36 +560,6 @@
   cursor: pointer;
 }
 
-/* Speed Chips */
-
-.ir-panel-chips {
-  display: flex;
-  gap: 4px;
-}
-
-.ir-panel-chip {
-  flex: 1;
-  padding: 3px 0;
-  border: none;
-  border-radius: 6px;
-  background: var(--ir-btn-hover);
-  color: var(--ir-text);
-  font-size: 11px;
-  font-weight: 600;
-  font-family: inherit;
-  cursor: pointer;
-  transition: background 0.15s ease;
-}
-
-.ir-panel-chip:hover {
-  background: var(--ir-btn-active);
-}
-
-.ir-panel-chip--active {
-  background: var(--ir-accent);
-  color: #fff;
-}
-
 /* Progress */
 
 .ir-panel-progress {
