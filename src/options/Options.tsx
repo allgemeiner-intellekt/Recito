@@ -20,6 +20,17 @@ import type { ConfigHealth } from '../background/failover';
 
 type Section = 'appearance' | 'providers' | 'voices' | 'playback' | 'highlighting' | 'hotkeys' | 'advanced';
 
+// Inline SVG icon paths for nav (16x16, stroke-based)
+const NAV_ICONS: Record<Section, string> = {
+  appearance: 'M12 3a6 6 0 00-6 6c0 7 6 9 6 9s6-2 6-9a6 6 0 00-6-6z',
+  providers: 'M7 11l5-5m0 0v4m0-4H8M21 12a9 9 0 11-18 0 9 9 0 0118 0z',
+  voices: 'M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3zm-7 8v1a7 7 0 0014 0v-1m-7 8v4',
+  playback: 'M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z',
+  highlighting: 'M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z',
+  hotkeys: 'M6 13h12M6 17h12M6 9h12M4 5h16a2 2 0 012 2v10a2 2 0 01-2 2H4a2 2 0 01-2-2V7a2 2 0 012-2z',
+  advanced: 'M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.573-1.066zM15 12a3 3 0 11-6 0 3 3 0 016 0z',
+};
+
 const NAV_ITEMS: { id: Section; label: string }[] = [
   { id: 'appearance', label: 'Appearance' },
   { id: 'providers', label: 'Providers' },
@@ -338,6 +349,9 @@ export function Options() {
                 className={`nav-item ${section === item.id ? 'active' : ''}`}
                 onClick={() => setSection(item.id)}
               >
+                <svg className="nav-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d={NAV_ICONS[item.id]} />
+                </svg>
                 {item.label}
               </button>
             </li>
@@ -679,7 +693,11 @@ export function Options() {
             {!settings.activeProviderGroup ? (
               <p className="empty-state">Select an active provider group first to browse voices.</p>
             ) : voicesLoading ? (
-              <p className="loading-text">Loading voices...</p>
+              <div>
+                <div className="skeleton skeleton-card" />
+                <div className="skeleton skeleton-card" />
+                <div className="skeleton skeleton-card" />
+              </div>
             ) : voicesError ? (
               <p className="error-text">{voicesError}</p>
             ) : voices.length === 0 ? (
@@ -738,6 +756,7 @@ export function Options() {
                 value={settings.playback.defaultSpeed}
                 onChange={(e) => updatePlayback({ defaultSpeed: parseFloat(e.target.value) })}
                 aria-label="Default speed"
+                style={{ '--fill': `${((settings.playback.defaultSpeed - SPEED_MIN) / (SPEED_MAX - SPEED_MIN)) * 100}%` } as React.CSSProperties}
               />
             </div>
 
@@ -757,6 +776,7 @@ export function Options() {
                 value={settings.playback.defaultVolume}
                 onChange={(e) => updatePlayback({ defaultVolume: parseFloat(e.target.value) })}
                 aria-label="Default volume"
+                style={{ '--fill': `${settings.playback.defaultVolume * 100}%` } as React.CSSProperties}
               />
             </div>
 

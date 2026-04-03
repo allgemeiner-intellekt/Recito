@@ -20,7 +20,7 @@ export function Onboarding() {
   return (
     <div className="onboarding">
       <StepIndicator current={currentStep} />
-      <div className="onboarding-card">
+      <div className="onboarding-card" key={currentStep}>
         {currentStep === 0 && <StepWelcome onNext={goNext} />}
         {currentStep === 1 && (
           <StepProvider
@@ -41,10 +41,18 @@ export function Onboarding() {
 }
 
 function StepIndicator({ current }: { current: number }) {
+  const steps = [0, 1, 2];
   return (
     <div className="step-indicator">
-      {[0, 1, 2].map((i) => (
-        <div key={i} className={`step-dot ${i === current ? 'active' : ''} ${i < current ? 'done' : ''}`} />
+      {steps.map((i) => (
+        <React.Fragment key={i}>
+          <div className={`step-dot ${i === current ? 'active' : ''} ${i < current ? 'done' : ''}`} />
+          {i < steps.length - 1 && (
+            <div className={`step-connector ${i < current ? 'filled' : ''}`}>
+              <div className="step-connector-fill" />
+            </div>
+          )}
+        </React.Fragment>
       ))}
     </div>
   );
@@ -263,7 +271,7 @@ function StepDone() {
   return (
     <div className="step-content">
       <div className="done-icon">
-        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ strokeDasharray: 60, strokeDashoffset: 0 }}>
           <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
           <polyline points="22 4 12 14.01 9 11.01" />
         </svg>

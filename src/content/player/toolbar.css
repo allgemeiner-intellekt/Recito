@@ -10,6 +10,7 @@
   /* Dark theme (default) */
   --ir-bg: rgba(26, 26, 46, 0.95);
   --ir-border: rgba(255, 255, 255, 0.1);
+  --ir-border-top: rgba(255, 255, 255, 0.15);
   --ir-shadow: rgba(0, 0, 0, 0.4);
   --ir-text: #ffffff;
   --ir-text-muted: rgba(255, 255, 255, 0.5);
@@ -18,13 +19,17 @@
   --ir-progress-track: rgba(255, 255, 255, 0.15);
   --ir-accent: #3b82f6;
   --ir-accent-hover: #2563eb;
+  --ir-accent-glow: rgba(59, 130, 246, 0.3);
+  --ir-playing: #f59e0b;
+  --ir-playing-hover: #d97706;
+  --ir-playing-glow: rgba(245, 158, 11, 0.3);
   --ir-stop: #ef4444;
   --ir-stop-hover: rgba(239, 68, 68, 0.3);
   --ir-close-hover: rgba(239, 68, 68, 0.3);
   --ir-volume-color: rgba(255, 255, 255, 0.7);
   --ir-volume-track: rgba(255, 255, 255, 0.2);
   --ir-volume-thumb: #ffffff;
-  --ir-spinner-ring: rgba(255, 255, 255, 0.3);
+  --ir-spinner-ring: rgba(255, 255, 255, 0.2);
   --ir-spinner-arc: #ffffff;
   --ir-toast-bg: rgba(30, 30, 50, 0.95);
   --ir-toast-shadow: rgba(0, 0, 0, 0.4);
@@ -33,6 +38,7 @@
 :host(.light) {
   --ir-bg: rgba(255, 255, 255, 0.92);
   --ir-border: rgba(0, 0, 0, 0.1);
+  --ir-border-top: rgba(255, 255, 255, 0.5);
   --ir-shadow: rgba(0, 0, 0, 0.15);
   --ir-text: #1a1a2e;
   --ir-text-muted: rgba(0, 0, 0, 0.5);
@@ -41,13 +47,17 @@
   --ir-progress-track: rgba(0, 0, 0, 0.1);
   --ir-accent: #2563eb;
   --ir-accent-hover: #1d4ed8;
+  --ir-accent-glow: rgba(37, 99, 235, 0.25);
+  --ir-playing: #d97706;
+  --ir-playing-hover: #b45309;
+  --ir-playing-glow: rgba(217, 119, 6, 0.25);
   --ir-stop: #dc2626;
   --ir-stop-hover: rgba(220, 38, 38, 0.15);
   --ir-close-hover: rgba(220, 38, 38, 0.15);
   --ir-volume-color: rgba(0, 0, 0, 0.5);
   --ir-volume-track: rgba(0, 0, 0, 0.12);
   --ir-volume-thumb: #1a1a2e;
-  --ir-spinner-ring: rgba(0, 0, 0, 0.2);
+  --ir-spinner-ring: rgba(0, 0, 0, 0.15);
   --ir-spinner-arc: #1a1a2e;
   --ir-toast-bg: rgba(255, 255, 255, 0.95);
   --ir-toast-shadow: rgba(0, 0, 0, 0.15);
@@ -65,9 +75,10 @@
 
 .ir-toolbar {
   background: var(--ir-bg);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
   border: 1px solid var(--ir-border);
+  border-top-color: var(--ir-border-top);
   box-shadow: 0 8px 32px var(--ir-shadow);
   color: var(--ir-text);
   user-select: none;
@@ -82,11 +93,11 @@
 .ir-toolbar--collapsed {
   min-width: 320px;
   height: 48px;
-  border-radius: 24px;
+  border-radius: 9999px;
   display: flex;
   align-items: center;
-  padding: 0 8px;
-  gap: 6px;
+  padding: 0 12px;
+  gap: 8px;
 }
 
 /* --- Buttons --- */
@@ -102,7 +113,7 @@
   border-radius: 50%;
   padding: 4px;
   flex-shrink: 0;
-  transition: background 0.15s ease, opacity 0.15s ease;
+  transition: background 0.15s ease, opacity 0.15s ease, transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 .ir-btn:hover {
@@ -111,6 +122,8 @@
 
 .ir-btn:active {
   background: var(--ir-btn-active);
+  transform: scale(0.92);
+  transition: transform 0.05s;
 }
 
 .ir-btn:disabled {
@@ -123,10 +136,26 @@
   background: var(--ir-accent);
   color: #fff;
   border-radius: 50%;
+  box-shadow: 0 0 12px var(--ir-accent-glow);
+  transition: background 0.15s ease, box-shadow 0.15s ease, transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 .ir-play-pause:hover {
   background: var(--ir-accent-hover);
+}
+
+.ir-play-pause:active {
+  transform: scale(0.9);
+  transition: transform 0.05s;
+}
+
+.ir-play-pause.ir-playing {
+  background: var(--ir-playing);
+  box-shadow: 0 0 12px var(--ir-playing-glow);
+}
+
+.ir-play-pause.ir-playing:hover {
+  background: var(--ir-playing-hover);
 }
 
 /* Speed Chip */
@@ -138,10 +167,16 @@
   background: var(--ir-btn-hover);
   white-space: nowrap;
   min-width: 40px;
+  transition: background 0.15s ease, transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 .ir-speed-chip:hover {
   background: var(--ir-btn-active);
+}
+
+.ir-speed-chip:active {
+  transform: scale(0.95);
+  transition: transform 0.05s;
 }
 
 /* Close */
@@ -161,6 +196,22 @@
 
 .ir-skip:hover {
   opacity: 1;
+}
+
+.ir-skip svg {
+  transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.ir-skip:active svg {
+  transition: transform 0.05s;
+}
+
+.ir-skip--nudge-forward svg {
+  transform: translateX(2px);
+}
+
+.ir-skip--nudge-backward svg {
+  transform: translateX(-2px);
 }
 
 /* --- Circular Progress Ring --- */
@@ -212,7 +263,13 @@
   appearance: none;
   width: 80px;
   height: 4px;
-  background: var(--ir-volume-track);
+  background: linear-gradient(
+    to right,
+    var(--ir-accent) 0%,
+    var(--ir-accent) var(--fill, 0%),
+    var(--ir-volume-track) var(--fill, 0%),
+    var(--ir-volume-track) 100%
+  );
   border-radius: 2px;
   outline: none;
   cursor: pointer;
@@ -226,11 +283,15 @@
   background: var(--ir-volume-thumb);
   border-radius: 50%;
   cursor: pointer;
-  transition: transform 0.1s ease;
+  transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 .ir-volume-slider::-webkit-slider-thumb:hover {
-  transform: scale(1.2);
+  transform: scale(1.3);
+}
+
+.ir-volume-slider:active::-webkit-slider-thumb {
+  transform: scale(1.4);
 }
 
 .ir-volume-slider::-moz-range-thumb {
@@ -250,6 +311,7 @@
   height: 16px;
   border: 2px solid var(--ir-spinner-ring);
   border-top-color: var(--ir-spinner-arc);
+  border-right-color: var(--ir-spinner-arc);
   border-radius: 50%;
   animation: ir-spin 0.6s linear infinite;
 }
@@ -270,23 +332,23 @@
 
 .ir-fade-enter {
   opacity: 0;
-  transform: translateY(20px);
+  transform: translateY(12px) scale(0.95);
 }
 
 .ir-fade-enter-active {
   opacity: 1;
-  transform: translateY(0);
-  transition: opacity 0.2s ease, transform 0.2s ease;
+  transform: translateY(0) scale(1);
+  transition: opacity 0.25s ease-out, transform 0.25s ease-out;
 }
 
 .ir-fade-exit {
   opacity: 1;
-  transform: translateY(0);
+  transform: translateY(0) scale(1);
 }
 
 .ir-fade-exit-active {
   opacity: 0;
-  transform: translateY(20px);
+  transform: translateY(8px) scale(0.98);
   transition: opacity 0.15s ease, transform 0.15s ease;
 }
 
@@ -298,22 +360,37 @@
   right: 24px;
   background: var(--ir-toast-bg);
   color: var(--ir-text);
-  padding: 8px 16px;
+  padding: 8px 16px 8px 12px;
   border-radius: 8px;
+  border-left: 3px solid var(--ir-accent);
   font-size: 12px;
   font-weight: 500;
-  box-shadow: 0 4px 12px var(--ir-toast-shadow);
+  box-shadow: 0 4px 16px var(--ir-toast-shadow);
   z-index: 2147483646;
   pointer-events: none;
-  animation: ir-toast-in 0.2s ease, ir-toast-out 0.2s ease 2.6s forwards;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  animation: ir-toast-in 0.2s ease-out, ir-toast-out 0.2s ease 2.6s forwards;
+}
+
+.ir-toast::before {
+  content: '';
+  display: block;
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid var(--ir-accent);
+  background: transparent;
 }
 
 @keyframes ir-toast-in {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
+  from { opacity: 0; transform: translateY(10px) scale(0.95); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
 }
 
 @keyframes ir-toast-out {
-  from { opacity: 1; transform: translateY(0); }
-  to { opacity: 0; transform: translateY(10px); }
+  from { opacity: 1; transform: translateY(0) scale(1); }
+  to { opacity: 0; transform: translateY(10px) scale(0.95); }
 }

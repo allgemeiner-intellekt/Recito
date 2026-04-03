@@ -52,7 +52,9 @@ body {
 }
 
 .nav-item {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 10px;
   width: 100%;
   padding: 10px 20px;
   font-size: 14px;
@@ -60,9 +62,10 @@ body {
   color: var(--text-muted);
   background: none;
   border: none;
+  border-left: 3px solid transparent;
   text-align: left;
   cursor: pointer;
-  transition: color 0.15s, background 0.15s;
+  transition: color 0.15s, background 0.15s, border-color 0.15s;
 }
 
 .nav-item:hover {
@@ -72,8 +75,8 @@ body {
 
 .nav-item.active {
   color: var(--accent);
-  background: var(--surface);
-  border-left: 3px solid var(--accent);
+  background: var(--accent-subtle);
+  border-left-color: var(--accent);
   padding-left: 17px;
 }
 
@@ -82,12 +85,31 @@ body {
   outline-offset: -2px;
 }
 
+.nav-icon {
+  flex-shrink: 0;
+  opacity: 0.6;
+}
+
+.nav-item.active .nav-icon {
+  opacity: 1;
+}
+
 /* ---- Content ---- */
 .content {
   margin-left: var(--sidebar-width);
   flex: 1;
   padding: 32px 40px;
   max-width: 800px;
+}
+
+/* Section fade-in on change */
+.section-content {
+  animation: section-fade-in 0.15s ease;
+}
+
+@keyframes section-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 .section-content h1 {
@@ -111,7 +133,7 @@ body {
 /* ---- Buttons ---- */
 .btn {
   padding: 8px 16px;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   border: 1px solid var(--border);
   background: var(--surface);
   color: var(--text);
@@ -127,7 +149,8 @@ body {
 }
 
 .btn:active {
-  transform: scale(0.97);
+  transform: scale(0.96);
+  transition: transform 0.05s;
 }
 
 .btn:focus-visible {
@@ -178,11 +201,12 @@ body {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  transition: border-color 0.15s;
+  transition: border-color 0.15s, box-shadow 0.2s, transform 0.2s;
 }
 
 .card-active {
   border-color: var(--accent);
+  background: var(--accent-subtle);
 }
 
 .card-clickable {
@@ -192,6 +216,8 @@ body {
 .card-clickable:hover {
   border-color: var(--accent);
   background: var(--surface-hover);
+  box-shadow: var(--shadow-sm);
+  transform: translateY(-1px);
 }
 
 .card-clickable:focus-visible {
@@ -231,6 +257,25 @@ body {
   color: #fff;
 }
 
+/* ---- Skeleton loading ---- */
+.skeleton {
+  background: linear-gradient(90deg, var(--surface) 25%, var(--surface-hover) 50%, var(--surface) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+  border-radius: var(--radius-sm);
+}
+
+.skeleton-card {
+  height: 60px;
+  border-radius: var(--radius);
+  margin-bottom: 10px;
+}
+
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
 /* ---- Empty / Loading / Error states ---- */
 .empty-state,
 .loading-text {
@@ -257,17 +302,29 @@ body {
   align-items: center;
   justify-content: center;
   z-index: 100;
+  animation: modal-overlay-in 0.2s ease;
+}
+
+@keyframes modal-overlay-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 .modal {
   background: var(--bg-alt);
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   padding: 24px;
   width: 480px;
   max-width: 90vw;
   max-height: 90vh;
   overflow-y: auto;
+  animation: modal-in 0.2s ease-out;
+}
+
+@keyframes modal-in {
+  from { opacity: 0; transform: scale(0.95) translateY(8px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
 }
 
 .modal h2 {
@@ -292,11 +349,12 @@ body {
   width: 100%;
   padding: 8px 12px;
   margin-top: 6px;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   border: 1px solid var(--border);
   background: var(--surface);
   color: var(--text);
   font-size: 14px;
+  transition: border-color 0.15s;
 }
 
 .form-input:focus,
@@ -312,7 +370,7 @@ body {
 
 .test-result {
   padding: 8px 12px;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   font-size: 13px;
   margin-bottom: 14px;
 }
@@ -349,6 +407,11 @@ body {
   border-radius: var(--radius);
   padding: 16px;
   margin-bottom: 12px;
+  transition: box-shadow 0.2s, transform 0.2s;
+}
+
+.settings-card:hover {
+  box-shadow: var(--shadow-sm);
 }
 
 .setting-row {
@@ -380,13 +443,19 @@ body {
   margin-bottom: 12px;
 }
 
-/* ---- Slider (reused from popup) ---- */
+/* ---- Slider ---- */
 .slider {
   width: 100%;
   height: 4px;
   -webkit-appearance: none;
   appearance: none;
-  background: var(--border);
+  background: linear-gradient(
+    to right,
+    var(--accent) 0%,
+    var(--accent) var(--fill, 0%),
+    var(--border) var(--fill, 0%),
+    var(--border) 100%
+  );
   border-radius: 2px;
   outline: none;
   cursor: pointer;
@@ -400,11 +469,15 @@ body {
   background: var(--accent);
   border: 2px solid var(--bg);
   cursor: pointer;
-  transition: transform 0.1s;
+  transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 .slider::-webkit-slider-thumb:hover {
   transform: scale(1.2);
+}
+
+.slider:active::-webkit-slider-thumb {
+  transform: scale(1.35);
 }
 
 .slider::-moz-range-thumb {
@@ -431,7 +504,7 @@ body {
   background: var(--border);
   position: relative;
   cursor: pointer;
-  transition: background 0.2s;
+  transition: background 0.15s ease;
   flex-shrink: 0;
 }
 
@@ -444,7 +517,7 @@ body {
   height: 18px;
   border-radius: 50%;
   background: #fff;
-  transition: transform 0.2s;
+  transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 .toggle:checked {
@@ -470,18 +543,21 @@ body {
 .swatch {
   width: 32px;
   height: 32px;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   border: 2px solid transparent;
   cursor: pointer;
-  transition: border-color 0.15s, transform 0.1s;
+  transition: border-color 0.15s, transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.15s;
+  position: relative;
 }
 
 .swatch:hover {
-  transform: scale(1.1);
+  transform: scale(1.12);
 }
 
 .swatch-active {
   border-color: var(--text);
+  transform: scale(1.1);
+  box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--text);
 }
 
 .swatch:focus-visible {
@@ -512,7 +588,7 @@ body {
   min-width: 80px;
   text-align: center;
   padding: 4px 10px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   background: var(--bg);
   border: 1px solid var(--border);
   font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
@@ -531,14 +607,26 @@ body {
 
 .health-dot--healthy {
   background: var(--success);
+  animation: health-pulse 2s ease-in-out infinite;
 }
 
 .health-dot--cooldown {
-  background: #eab308;
+  background: var(--warning);
+  animation: health-blink 1s ease-in-out infinite;
 }
 
 .health-dot--failed {
   background: var(--danger);
+}
+
+@keyframes health-pulse {
+  0%, 100% { opacity: 0.7; }
+  50% { opacity: 1; }
+}
+
+@keyframes health-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
 }
 
 .health-info {
@@ -574,7 +662,7 @@ body {
 }
 
 .usage-fill--ok { background: var(--success); }
-.usage-fill--warn { background: #eab308; }
+.usage-fill--warn { background: var(--warning); }
 .usage-fill--danger { background: var(--danger); }
 
 .usage-text {

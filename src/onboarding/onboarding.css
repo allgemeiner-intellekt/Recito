@@ -33,15 +33,18 @@ body {
   width: 100%;
   background: var(--bg-alt);
   border: 1px solid var(--border);
-  border-radius: 16px;
+  border-radius: var(--radius-xl);
   padding: 40px 36px;
+  overflow: hidden;
 }
 
-/* ---- Step Indicator ---- */
+/* ---- Step Indicator (connected dots) ---- */
 .step-indicator {
   display: flex;
-  gap: 10px;
+  align-items: center;
   justify-content: center;
+  gap: 0;
+  position: relative;
 }
 
 .step-dot {
@@ -49,7 +52,32 @@ body {
   height: 10px;
   border-radius: 50%;
   background: var(--border);
-  transition: background 0.3s, transform 0.3s;
+  transition: background 0.3s, transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  position: relative;
+  z-index: 1;
+  flex-shrink: 0;
+}
+
+.step-connector {
+  width: 32px;
+  height: 2px;
+  background: var(--border);
+  position: relative;
+  overflow: hidden;
+}
+
+.step-connector-fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  background: var(--success);
+  transition: width 0.4s ease;
+  width: 0;
+}
+
+.step-connector.filled .step-connector-fill {
+  width: 100%;
 }
 
 .step-dot.active {
@@ -67,6 +95,12 @@ body {
   flex-direction: column;
   align-items: center;
   text-align: center;
+  animation: step-enter 0.25s ease-out;
+}
+
+@keyframes step-enter {
+  from { opacity: 0; transform: translateX(15px); }
+  to { opacity: 1; transform: translateX(0); }
 }
 
 .step-title {
@@ -82,7 +116,7 @@ body {
   margin-bottom: 32px;
 }
 
-/* ---- Value Cards (Step 1) ---- */
+/* ---- Value Cards (Step 1) — staggered entrance ---- */
 .value-cards {
   display: flex;
   flex-direction: column;
@@ -100,19 +134,31 @@ body {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   text-align: left;
-  transition: border-color 0.2s;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  opacity: 0;
+  animation: card-stagger-in 0.35s ease forwards;
+}
+
+.value-card:nth-child(1) { animation-delay: 0ms; }
+.value-card:nth-child(2) { animation-delay: 80ms; }
+.value-card:nth-child(3) { animation-delay: 160ms; }
+
+@keyframes card-stagger-in {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .value-card:hover {
   border-color: var(--accent);
+  box-shadow: var(--shadow-sm);
 }
 
 .value-icon {
   flex-shrink: 0;
   width: 40px;
   height: 40px;
-  border-radius: 10px;
-  background: rgba(59, 130, 246, 0.15);
+  border-radius: var(--radius-lg);
+  background: var(--accent-subtle);
   color: var(--accent);
   display: flex;
   align-items: center;
@@ -135,7 +181,7 @@ body {
 /* ---- Buttons ---- */
 .btn {
   padding: 10px 20px;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   border: 1px solid var(--border);
   background: var(--surface);
   color: var(--text);
@@ -151,7 +197,8 @@ body {
 }
 
 .btn:active {
-  transform: scale(0.97);
+  transform: scale(0.96);
+  transition: transform 0.05s;
 }
 
 .btn:focus-visible {
@@ -190,7 +237,7 @@ body {
   padding: 14px 32px;
   font-size: 16px;
   font-weight: 600;
-  border-radius: 10px;
+  border-radius: var(--radius-lg);
 }
 
 .full-width {
@@ -218,11 +265,12 @@ body {
   width: 100%;
   padding: 10px 14px;
   margin-top: 6px;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   border: 1px solid var(--border);
   background: var(--surface);
   color: var(--text);
   font-size: 14px;
+  transition: border-color 0.15s;
 }
 
 .form-input:focus,
@@ -257,14 +305,20 @@ body {
   align-items: center;
   gap: 8px;
   padding: 10px 14px;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   font-size: 13px;
   font-weight: 500;
   margin-bottom: 16px;
+  animation: result-in 0.2s ease-out;
+}
+
+@keyframes result-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .test-result.success {
-  background: rgba(34, 197, 94, 0.15);
+  background: var(--success-subtle);
   color: var(--success);
   border: 1px solid rgba(34, 197, 94, 0.3);
 }
@@ -273,6 +327,14 @@ body {
   background: rgba(239, 68, 68, 0.15);
   color: var(--danger);
   border: 1px solid rgba(239, 68, 68, 0.3);
+  animation: result-in 0.2s ease-out, form-shake 0.3s ease;
+}
+
+@keyframes form-shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-4px); }
+  50% { transform: translateX(4px); }
+  75% { transform: translateX(-2px); }
 }
 
 .test-icon {
@@ -286,7 +348,7 @@ body {
   font-size: 14px;
   cursor: pointer;
   padding: 8px 16px;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   transition: color 0.15s;
   text-decoration: underline;
   text-underline-offset: 2px;
@@ -306,12 +368,27 @@ body {
   width: 72px;
   height: 72px;
   border-radius: 50%;
-  background: rgba(34, 197, 94, 0.15);
+  background: var(--success-subtle);
   color: var(--success);
   display: flex;
   align-items: center;
   justify-content: center;
   margin-bottom: 20px;
+  animation: done-pop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes done-pop {
+  from { transform: scale(0); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+.done-icon svg {
+  animation: checkmark-draw 0.4s ease 0.2s both;
+}
+
+@keyframes checkmark-draw {
+  from { opacity: 0; stroke-dashoffset: 60; }
+  to { opacity: 1; stroke-dashoffset: 0; }
 }
 
 .tips-card {

@@ -297,6 +297,7 @@ export function Popup() {
           value={speed}
           onChange={(e) => handleSpeedChange(parseFloat(e.target.value))}
           aria-label="Playback speed"
+          style={{ '--fill': `${((speed - SPEED_MIN) / (SPEED_MAX - SPEED_MIN)) * 100}%` } as React.CSSProperties}
         />
         <div className="speed-chips">
           {SPEED_CHIPS.map((s) => (
@@ -328,6 +329,7 @@ export function Popup() {
             value={volume}
             onChange={(e) => handleVolumeChange(parseFloat(e.target.value))}
             aria-label="Volume"
+            style={{ '--fill': `${volume * 100}%` } as React.CSSProperties}
           />
           <span className="control-value volume-value">{Math.round(volume * 100)}%</span>
         </div>
@@ -347,12 +349,33 @@ export function Popup() {
               </span>
             )}
           </div>
+          {playback.totalChunks > 0 && (
+            <div className="reading-progress">
+              <div
+                className="reading-progress-fill"
+                style={{ width: `${((playback.currentChunkIndex + playback.chunkProgress) / playback.totalChunks) * 100}%` }}
+              />
+            </div>
+          )}
         </section>
       )}
 
       {/* Footer */}
       <footer className="popup-footer">
-        <button className="link-btn" onClick={openOptions}>
+        <button className="footer-btn" onClick={openOptions} aria-label="Open settings">
+          <svg width="14" height="14" viewBox="0 0 20 20" fill="none">
+            <path
+              d="M10 13a3 3 0 100-6 3 3 0 000 6z"
+              stroke="currentColor"
+              strokeWidth="1.5"
+            />
+            <path
+              d="M16.5 10a6.5 6.5 0 01-.4 2.2l1.5 1.2-1.2 2-1.8-.6a6.5 6.5 0 01-1.9 1.1l-.3 1.9h-2.4l-.3-1.9a6.5 6.5 0 01-1.9-1.1l-1.8.6-1.2-2 1.5-1.2A6.5 6.5 0 013.5 10c0-.8.1-1.5.4-2.2L2.4 6.6l1.2-2 1.8.6A6.5 6.5 0 017.3 4.1L7.6 2.2H10l.3 1.9a6.5 6.5 0 011.9 1.1l1.8-.6 1.2 2-1.5 1.2c.3.7.4 1.4.4 2.2z"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinejoin="round"
+            />
+          </svg>
           Settings
         </button>
       </footer>

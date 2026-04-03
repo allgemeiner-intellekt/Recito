@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useCallback, useRef } from 'react';
 
 // --- SVG Icon Paths ---
 
@@ -65,10 +65,23 @@ interface SkipButtonProps {
 }
 
 export function SkipButton({ direction, onClick }: SkipButtonProps) {
+  const btnRef = useRef<HTMLButtonElement>(null);
+
+  const handleClick = useCallback(() => {
+    onClick();
+    const el = btnRef.current;
+    if (el) {
+      const cls = direction === 'forward' ? 'ir-skip--nudge-forward' : 'ir-skip--nudge-backward';
+      el.classList.add(cls);
+      setTimeout(() => el.classList.remove(cls), 150);
+    }
+  }, [direction, onClick]);
+
   return (
     <button
+      ref={btnRef}
       className="ir-btn ir-skip"
-      onClick={onClick}
+      onClick={handleClick}
       title={direction === 'forward' ? 'Skip forward' : 'Skip backward'}
     >
       <Icon path={direction === 'forward' ? SKIP_FORWARD_PATH : SKIP_BACKWARD_PATH} size={18} />
@@ -120,6 +133,7 @@ export function VolumeSlider({ volume, onChange }: VolumeSliderProps) {
         value={volume}
         onChange={(e) => onChange(parseFloat(e.target.value))}
         title={`Volume: ${Math.round(volume * 100)}%`}
+        style={{ '--fill': `${volume * 100}%` } as React.CSSProperties}
       />
     </div>
   );
@@ -185,7 +199,7 @@ export function PlayPauseWithProgress({
         />
       </svg>
       <button
-        className="ir-btn ir-play-pause"
+        className={`ir-btn ir-play-pause${isPlaying ? ' ir-playing' : ''}`}
         onClick={onClick}
         disabled={isLoading}
         title={isPlaying ? 'Pause' : 'Play'}
