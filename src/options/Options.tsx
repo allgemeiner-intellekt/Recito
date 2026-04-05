@@ -338,6 +338,32 @@ export function Options() {
     URL.revokeObjectURL(url);
   };
 
+  const importSettings = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json';
+    input.onchange = async () => {
+      const file = input.files?.[0];
+      if (!file) return;
+      try {
+        const text = await file.text();
+        const data = JSON.parse(text);
+        if (data.settings && typeof data.settings === 'object') {
+          const merged = { ...DEFAULT_SETTINGS, ...data.settings };
+          await saveSettings(merged);
+          setSettings(merged);
+        }
+        if (Array.isArray(data.providers)) {
+          await chrome.storage.local.set({ 'ir-providers': data.providers });
+          setProviders(data.providers);
+        }
+      } catch {
+        alert('Failed to import settings. Please check the file is valid JSON.');
+      }
+    };
+    input.click();
+  };
+
   return (
     <div className="options-layout">
       {/* Sidebar */}
@@ -902,6 +928,13 @@ export function Options() {
               <p className="setting-desc">Export all settings and provider configs as JSON.</p>
               <button className="btn" onClick={exportSettings}>
                 Export Settings
+              </button>
+            </div>
+
+            <div className="settings-card">
+              <p className="setting-desc">Import settings and provider configs from a previously exported JSON file.</p>
+              <button className="btn" onClick={importSettings}>
+                Import Settings
               </button>
             </div>
 
