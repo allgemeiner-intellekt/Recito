@@ -574,6 +574,23 @@
 
 /* Speed Slider */
 
+.ir-panel-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.ir-panel-label {
+  font-size: 11px;
+  color: var(--ir-text-muted);
+}
+
+.ir-panel-value {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ir-text);
+}
+
 .ir-panel-slider {
   -webkit-appearance: none;
   appearance: none;
