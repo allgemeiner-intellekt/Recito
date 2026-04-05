@@ -331,7 +331,7 @@ export function Options() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'immersive-reader-settings.json';
+    a.download = 'recito-settings.json';
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -366,7 +366,7 @@ export function Options() {
     <div className="options-layout">
       {/* Sidebar */}
       <nav className="sidebar" role="navigation" aria-label="Settings sections">
-        <h2 className="sidebar-title">Immersive Reader</h2>
+        <h2 className="sidebar-title">Recito</h2>
         <ul className="nav-list">
           {NAV_ITEMS.map((item) => (
             <li key={item.id}>

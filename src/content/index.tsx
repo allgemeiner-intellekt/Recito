@@ -15,7 +15,7 @@ import {
 } from './highlighting/auto-scroll';
 import { initTextScrubber, destroyTextScrubber } from './highlighting/text-scrubber';
 
-console.log('Immersive Reader: content script loaded');
+console.log('Recito: content script loaded');
 
 // Auto-hide toolbar when native media (video/audio) plays
 function setupNativeMediaDetection() {
@@ -226,7 +226,7 @@ async function handleMessage(message: ExtensionMessage): Promise<unknown> {
     }
 
     case MSG.PLAYBACK_ERROR: {
-      console.error('Immersive Reader playback error:', message.error);
+      console.error('Recito playback error:', message.error);
       store._setPlaybackStatus('idle');
       return { ok: true };
     }

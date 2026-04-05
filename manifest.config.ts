@@ -2,7 +2,7 @@ import { defineManifest } from '@crxjs/vite-plugin';
 
 export default defineManifest({
   manifest_version: 3,
-  name: 'Immersive Reader',
+  name: 'Recito',
   description: 'Open-source TTS with BYOK support — bring your own OpenAI, ElevenLabs, Groq, or custom provider',
   version: '1.0.0',
   icons: {

@@ -166,7 +166,7 @@ export function Popup() {
     <div className="popup">
       {/* Header */}
       <header className="popup-header">
-        <h1 className="popup-title">Immersive Reader</h1>
+        <h1 className="popup-title">Recito</h1>
         <button
           className="icon-btn"
           onClick={openOptions}

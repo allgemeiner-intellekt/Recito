@@ -61,7 +61,7 @@ function StepIndicator({ current }: { current: number }) {
 function StepWelcome({ onNext }: { onNext: () => void }) {
   return (
     <div className="step-content">
-      <h1 className="step-title">Welcome to Immersive Reader</h1>
+      <h1 className="step-title">Welcome to Recito</h1>
       <p className="step-subtitle">Listen to any web page with your own API keys</p>
 
       <div className="value-cards">
@@ -278,7 +278,7 @@ function StepDone() {
       </div>
 
       <h1 className="step-title">You're All Set!</h1>
-      <p className="step-subtitle">Immersive Reader is ready to use</p>
+      <p className="step-subtitle">Recito is ready to use</p>
 
       <div className="tips-card">
         <h3>Quick Tips</h3>

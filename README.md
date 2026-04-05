@@ -1,4 +1,4 @@
-# Immersive Reader
+# Recito
 
 Open-source Chrome extension (Manifest V3) that turns any web page into an audiobook with karaoke-style word highlighting. Bring Your Own Key — works with OpenAI, ElevenLabs, Groq, Xiaomi Mimo, or any OpenAI-compatible TTS endpoint.
 
@@ -70,8 +70,8 @@ Coming soon.
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/allgemeiner-intellekt/immersive-reader.git
-   cd immersive-reader
+   git clone https://github.com/allgemeiner-intellekt/recito.git
+   cd recito
    ```
 
 2. Install dependencies:
@@ -97,7 +97,7 @@ npm run dev
 
 ## Usage
 
-1. Click the Immersive Reader icon in your toolbar
+1. Click the Recito icon in your toolbar
 2. Add a TTS provider and API key in the options page
 3. Navigate to any web page and click **Play** in the popup or floating toolbar
 4. The page will be read aloud with word-by-word highlighting

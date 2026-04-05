@@ -6,7 +6,7 @@ import { deriveAccentVars } from '@shared/accent-colors';
 import { getSettings } from '@shared/storage';
 import { resolveTheme } from '@shared/theme';
 
-const ROOT_ID = 'immersive-reader-root';
+const ROOT_ID = 'recito-root';
 const SETTINGS_KEY = 'ir-settings';
 
 export function mountToolbar() {

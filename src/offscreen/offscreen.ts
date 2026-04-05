@@ -1,7 +1,7 @@
 import { MSG, type ExtensionMessage } from '@shared/messages';
 import { AudioPlayer } from './audio-player';
 
-console.log('Immersive Reader: offscreen document loaded');
+console.log('Recito: offscreen document loaded');
 
 const player = new AudioPlayer();
 

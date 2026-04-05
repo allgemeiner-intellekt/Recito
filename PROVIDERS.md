@@ -1,6 +1,6 @@
 # Supported TTS Providers
 
-Immersive Reader supports any OpenAI-compatible TTS API. Below is a comparison of the built-in provider presets.
+Recito supports any OpenAI-compatible TTS API. Below is a comparison of the built-in provider presets.
 
 | Provider | Voices | Latency | Quality | Free Tier | Pricing |
 |----------|--------|---------|---------|-----------|---------|

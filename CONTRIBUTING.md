@@ -1,11 +1,11 @@
-# Contributing to Immersive Reader
+# Contributing to Recito
 
 ## Development Setup
 
 1. Clone and install:
    ```bash
-   git clone https://github.com/your-org/immersive-reader.git
-   cd immersive-reader
+   git clone https://github.com/allgemeiner-intellekt/recito.git
+   cd recito
    npm install
    ```
 

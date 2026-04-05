@@ -1,4 +1,4 @@
-# Immersive Reader
+# Recito
 
 Open-source Chrome extension (Manifest V3) for text-to-speech with BYOK (Bring Your Own Key). Inspired by Speechify but supports OpenAI, ElevenLabs, Groq, Xiaomi Mimo, and any OpenAI-compatible TTS provider.
 

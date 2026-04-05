@@ -2,7 +2,7 @@
 
 ## API Key Storage
 
-Immersive Reader stores API keys exclusively in `chrome.storage.local`, which is:
+Recito stores API keys exclusively in `chrome.storage.local`, which is:
 
 - **Local only** - Data never leaves your device via Chrome Sync
 - **Extension-scoped** - Only this extension can access its storage
@@ -15,7 +15,7 @@ API keys are never:
 
 ## Data Collection
 
-Immersive Reader collects **no data whatsoever**:
+Recito collects **no data whatsoever**:
 
 - No analytics or telemetry
 - No usage tracking
@@ -42,4 +42,4 @@ If you discover a security vulnerability, please report it responsibly:
 2. Email the maintainers with details of the vulnerability
 3. Allow reasonable time for a fix before public disclosure
 
-We appreciate your help keeping Immersive Reader secure for everyone.
+We appreciate your help keeping Recito secure for everyone.

@@ -20,7 +20,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 });
 
 chrome.runtime.onInstalled.addListener((details) => {
-  console.log('Immersive Reader installed', details.reason);
+  console.log('Recito installed', details.reason);
   if (details.reason === 'install') {
     chrome.tabs.create({ url: chrome.runtime.getURL('src/onboarding/index.html') });
   }
@@ -125,7 +125,7 @@ chrome.action.onClicked.addListener(async (tab) => {
 // Right-click context menu on extension icon → open settings
 chrome.contextMenus.create({
   id: 'ir-settings',
-  title: 'Immersive Reader Settings',
+  title: 'Recito Settings',
   contexts: ['action'],
 });
 
