@@ -325,9 +325,10 @@ export function Options() {
   };
 
   const exportSettings = () => {
-    const blob = new Blob([JSON.stringify({ providers, settings }, null, 2)], {
-      type: 'application/json',
-    });
+    const blob = new Blob(
+      [JSON.stringify({ version: 1, providers, settings }, null, 2)],
+      { type: 'application/json' },
+    );
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -346,8 +347,23 @@ export function Options() {
       try {
         const text = await file.text();
         const data = JSON.parse(text);
+
+        const version = typeof data.version === 'number' ? data.version : 1;
+        if (version > 1) {
+          console.warn(
+            `Recito: import file version ${version} is newer than supported (1). Importing best-effort.`,
+          );
+        }
+
         if (data.settings && typeof data.settings === 'object') {
           const merged = { ...DEFAULT_SETTINGS, ...data.settings };
+          // Cross-tool alias: Obsidian writes `accentColor`; Chrome reads `themeColor`.
+          if (
+            typeof data.settings.accentColor === 'string' &&
+            typeof data.settings.themeColor !== 'string'
+          ) {
+            merged.themeColor = data.settings.accentColor;
+          }
           await saveSettings(merged);
           setSettings(merged);
         }
