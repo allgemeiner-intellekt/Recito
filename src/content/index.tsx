@@ -183,7 +183,8 @@ async function handleMessage(message: ExtensionMessage): Promise<unknown> {
         message.duration > 0 ? message.currentTime / message.duration : 0;
       store._setChunkProgress(progress, message.currentTime);
       store._setCurrentChunk(message.chunkIndex);
-      if (store.playbackStatus !== 'playing') {
+      // Only auto-transition from loading → playing, not from paused
+      if (store.playbackStatus === 'loading') {
         store._setPlaybackStatus('playing');
       }
       return { ok: true };
