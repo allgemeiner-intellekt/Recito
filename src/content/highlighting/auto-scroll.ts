@@ -55,18 +55,6 @@ export function scrollToElement(element: Element): void {
   element.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
-export function pauseAutoScroll(): void {
-  paused = true;
-}
-
-export function resumeAutoScroll(): void {
-  paused = false;
-  if (pauseTimer !== null) {
-    clearTimeout(pauseTimer);
-    pauseTimer = null;
-  }
-}
-
 /**
  * Remove event listeners and reset state.
  */

@@ -11,7 +11,6 @@ import { HighlightManager } from './highlighting/highlight-manager';
 import {
   initAutoScroll,
   destroyAutoScroll,
-  resumeAutoScroll,
 } from './highlighting/auto-scroll';
 import { initTextScrubber, destroyTextScrubber } from './highlighting/text-scrubber';
 
@@ -51,6 +50,7 @@ let currentTitle = '';
 
 // Highlight manager instance
 let highlightManager: HighlightManager | null = null;
+
 
 // Mount the floating toolbar into the page
 mountToolbar();
@@ -213,13 +213,10 @@ async function handleMessage(message: ExtensionMessage): Promise<unknown> {
 
             // Also highlight the sentence containing this word
             const sentenceBounds = findSentenceBounds(chunkText, wordStart);
-            highlightManager.highlightSentence(
-              chunk.startOffset + sentenceBounds.start,
-              chunk.startOffset + sentenceBounds.end,
-            );
+            const absSentenceStart = chunk.startOffset + sentenceBounds.start;
+            const absSentenceEnd = chunk.startOffset + sentenceBounds.end;
+            highlightManager.highlightSentence(absSentenceStart, absSentenceEnd);
 
-            // Resume auto-scroll on new sentence
-            resumeAutoScroll();
           }
         }
       }
