@@ -20,6 +20,7 @@ interface SynthesizedChunk {
   audioBase64: string;
   format: string;
   wordTimings?: Array<{ word: string; startTime: number; endTime: number }>;
+  synthesizedSpeed: number;
 }
 
 let activeTabId: number | null = null;
@@ -31,6 +32,10 @@ let abortController: AbortController | null = null;
 // Session binding — locks provider + voice for the duration of a playback session
 let currentSession: PlaybackSession | null = null;
 let sessionGeneration = 0;
+
+// Server-side speed at which the currently playing chunk was synthesized.
+// Needed to compute the correct client-side residual when the user changes speed mid-chunk.
+let currentChunkSynthesizedSpeed = 1.0;
 
 const MAX_FAILOVER_ATTEMPTS = 3;
 
@@ -231,6 +236,7 @@ export function stopPlayback(): void {
     currentPageUrl = undefined;
   }
   currentSession = null;
+  currentChunkSynthesizedSpeed = 1.0;
   stopWordTimingRelay();
   playbackState.reset();
   sendToOffscreen({ type: MSG.OFFSCREEN_STOP }).catch(() => {});
@@ -272,14 +278,11 @@ export async function skipToChunk(chunkIndex: number): Promise<void> {
 export function setSpeed(speed: number): void {
   playbackState.update({ speed });
   // Compute residual playback rate for the currently-playing chunk.
-  // Server-synthesized chunks already have the provider's clamped speed baked in,
-  // so the offscreen player only needs to cover the gap.
-  const providerId = currentSession?.config.providerId;
-  const range = providerId ? PROVIDER_SPEED_RANGES[providerId] ?? null : null;
-  const serverSpeed = range
-    ? Math.min(Math.max(speed, range.min), range.max)
-    : 1.0;
-  const residual = serverSpeed !== 0 ? speed / serverSpeed : speed;
+  // The chunk was synthesized at currentChunkSynthesizedSpeed; the offscreen
+  // player covers the gap between that and the user's desired speed.
+  const residual = currentChunkSynthesizedSpeed !== 0
+    ? speed / currentChunkSynthesizedSpeed
+    : speed;
   sendToOffscreen({ type: MSG.OFFSCREEN_SET_SPEED, speed: residual }).catch(() => {});
 }
 
@@ -354,6 +357,12 @@ async function playChunksSequentially(
     // Send audio to offscreen as base64 (ArrayBuffer can't be serialized in Chrome messages)
     // Use OFFSCREEN_SCHEDULE_NEXT for gapless playback after the first chunk
     playbackState.setStatus('playing');
+    currentChunkSynthesizedSpeed = synthesized.synthesizedSpeed;
+    const currentSpeed = playbackState.getState().speed;
+    const residual = currentChunkSynthesizedSpeed !== 0
+      ? currentSpeed / currentChunkSynthesizedSpeed
+      : currentSpeed;
+    await sendToOffscreen({ type: MSG.OFFSCREEN_SET_SPEED, speed: residual });
     const offscreenMsg = i === startIndex ? MSG.OFFSCREEN_PLAY : MSG.OFFSCREEN_SCHEDULE_NEXT;
     await sendToOffscreen({
       type: offscreenMsg,
@@ -434,6 +443,7 @@ async function synthesizeChunk(tabId: number, chunkIndex: number): Promise<Synth
     audioBase64: arrayBufferToBase64(result.audioData),
     format: result.format,
     wordTimings: result.wordTimings,
+    synthesizedSpeed: serverSpeed,
   };
 }
 
