@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import type { ProviderConfig, Voice, AppSettings, ProviderUsage, ThemeMode } from '@shared/types';
 import { PROVIDER_LIST } from '@providers/registry';
 import { ELEVENLABS_MODELS } from '@providers/elevenlabs';
+import { MIMO_MODELS } from '@providers/mimo';
 import {
   getProviders,
   saveProvider,
@@ -66,9 +67,10 @@ interface ProviderFormData {
   baseUrl: string;
   modelId: string;
   customModel: string;
+  mimoModel: string;
 }
 
-const EMPTY_FORM: ProviderFormData = { providerId: 'openai', name: '', apiKey: '', baseUrl: '', modelId: 'eleven_multilingual_v2', customModel: 'tts-1' };
+const EMPTY_FORM: ProviderFormData = { providerId: 'openai', name: '', apiKey: '', baseUrl: '', modelId: 'eleven_multilingual_v2', customModel: 'tts-1', mimoModel: 'mimo-v2.5-tts' };
 
 function nextFormState(current: ProviderFormData, partial: Partial<ProviderFormData>): ProviderFormData {
   return { ...current, ...partial };
@@ -91,6 +93,8 @@ function getFormProviderConfig(
     config.extraParams = { model_id: form.modelId };
   } else if (trimmedProviderId === 'custom' && form.customModel.trim()) {
     config.extraParams = { model: form.customModel.trim() };
+  } else if (trimmedProviderId === 'mimo') {
+    config.extraParams = { model: form.mimoModel };
   }
   return config;
 }
@@ -248,6 +252,7 @@ export function Options() {
       baseUrl: config.baseUrl ?? '',
       modelId: (config.extraParams?.model_id as string) ?? 'eleven_multilingual_v2',
       customModel: (config.extraParams?.model as string) ?? 'tts-1',
+      mimoModel: (config.extraParams?.model as string) ?? 'mimo-v2-tts',
     });
     setTestResult(null);
     setShowForm(true);
@@ -752,6 +757,26 @@ export function Options() {
                         }}
                       >
                         {ELEVENLABS_MODELS.map((m) => (
+                          <option key={m.modelId} value={m.modelId}>
+                            {m.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  )}
+
+                  {form.providerId === 'mimo' && (
+                    <label className="form-label">
+                      Model
+                      <select
+                        className="form-select"
+                        value={form.mimoModel}
+                        onChange={(e) => {
+                          setTestResult(null);
+                          setForm(nextFormState(form, { mimoModel: e.target.value }));
+                        }}
+                      >
+                        {MIMO_MODELS.map((m) => (
                           <option key={m.modelId} value={m.modelId}>
                             {m.label}
                           </option>

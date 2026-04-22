@@ -5,10 +5,21 @@ import { ApiError } from '@shared/api-error';
 const DEFAULT_BASE_URL = 'https://api.xiaomimimo.com/v1';
 const DEFAULT_MODEL = 'mimo-v2-tts';
 
+export const MIMO_MODELS = [
+  { label: 'v2.5 (Latest)', modelId: 'mimo-v2.5-tts' },
+  { label: 'v2 (Legacy)', modelId: 'mimo-v2-tts' },
+] as const;
+
 const MIMO_VOICES: Voice[] = [
   { id: 'mimo_default', name: 'Mimo Default' },
-  { id: 'default_zh', name: 'Chinese Female', language: 'zh' },
-  { id: 'default_en', name: 'English Female', language: 'en' },
+  { id: '冰糖', name: '冰糖 (Bingtang)', language: 'zh' },
+  { id: '茉莉', name: '茉莉 (Moli)', language: 'zh' },
+  { id: '苏打', name: '苏打 (Suda)', language: 'zh' },
+  { id: '白桦', name: '白桦 (Baihua)', language: 'zh' },
+  { id: 'Mia', name: 'Mia', language: 'en' },
+  { id: 'Chloe', name: 'Chloe', language: 'en' },
+  { id: 'Milo', name: 'Milo', language: 'en' },
+  { id: 'Dean', name: 'Dean', language: 'en' },
 ];
 
 function buildHeaders(apiKey: string): Record<string, string> {
@@ -18,9 +29,14 @@ function buildHeaders(apiKey: string): Record<string, string> {
   };
 }
 
-function buildRequestBody(text: string, voiceId: string): Record<string, unknown> {
+function resolveModel(config: ProviderConfig): string {
+  const value = config.extraParams?.model;
+  return typeof value === 'string' && value ? value : DEFAULT_MODEL;
+}
+
+function buildRequestBody(text: string, voiceId: string, model: string): Record<string, unknown> {
   return {
-    model: DEFAULT_MODEL,
+    model,
     modalities: ['text', 'audio'],
     audio: { voice: voiceId, format: 'mp3' },
     thinking: { type: 'disabled' },
@@ -55,7 +71,7 @@ export const mimoProvider: TTSProvider = {
     _options?: SynthesisOptions,
   ): Promise<SynthesisResult> {
     const baseUrl = config.baseUrl || DEFAULT_BASE_URL;
-    const body = buildRequestBody(text, voice.id);
+    const body = buildRequestBody(text, voice.id, resolveModel(config));
 
     let response: Response;
     try {
@@ -112,7 +128,7 @@ export const mimoProvider: TTSProvider = {
     }
 
     const baseUrl = config.baseUrl || DEFAULT_BASE_URL;
-    const body = buildRequestBody('test', MIMO_VOICES[0]!.id);
+    const body = buildRequestBody('test', MIMO_VOICES[0]!.id, resolveModel(config));
 
     try {
       const response = await fetch(`${baseUrl}/chat/completions`, {
