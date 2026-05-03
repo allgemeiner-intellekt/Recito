@@ -40,11 +40,29 @@ chrome.alarms.onAlarm.addListener((alarm) => {
   }
 });
 
+let lastContentStateKey = '';
+
 playbackState.onStateChange((state) => {
   if (state.status === 'playing' || state.status === 'loading') {
     chrome.alarms.create('ir-keepalive', { periodInMinutes: 0.4 });
   } else if (state.status === 'idle') {
     chrome.alarms.clear('ir-keepalive');
+  }
+
+  const contentStateKey = [
+    state.status,
+    state.currentChunkIndex,
+    state.totalChunks,
+    state.speed,
+    state.volume,
+  ].join('|');
+
+  if (contentStateKey === lastContentStateKey) return;
+  lastContentStateKey = contentStateKey;
+
+  const tabId = getActiveTab();
+  if (tabId !== null) {
+    sendTabMessage(tabId, { type: MSG.PLAYBACK_STATE_CHANGED, state }).catch(() => {});
   }
 });
 

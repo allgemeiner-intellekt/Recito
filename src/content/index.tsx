@@ -61,6 +61,7 @@ function isContentMessage(message: ExtensionMessage): boolean {
     message.type === MSG.GET_CHUNK ||
     message.type === MSG.GET_PAGE_INFO ||
     message.type === MSG.PLAYBACK_PROGRESS ||
+    message.type === MSG.PLAYBACK_STATE_CHANGED ||
     message.type === MSG.CHUNK_COMPLETE ||
     message.type === MSG.WORD_TIMING ||
     message.type === MSG.PLAYBACK_ERROR ||
@@ -183,10 +184,16 @@ async function handleMessage(message: ExtensionMessage): Promise<unknown> {
         message.duration > 0 ? message.currentTime / message.duration : 0;
       store._setChunkProgress(progress, message.currentTime);
       store._setCurrentChunk(message.chunkIndex);
-      // Only auto-transition from loading → playing, not from paused
-      if (store.playbackStatus === 'loading') {
+      // If playback was started outside the content toolbar, the local store
+      // may not have seen the loading state before progress starts arriving.
+      if (store.playbackStatus === 'loading' || store.playbackStatus === 'idle') {
         store._setPlaybackStatus('playing');
       }
+      return { ok: true };
+    }
+
+    case MSG.PLAYBACK_STATE_CHANGED: {
+      store._syncPlaybackState(message.state);
       return { ok: true };
     }
 

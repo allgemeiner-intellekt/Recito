@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { PlaybackStatus } from '@shared/types';
+import type { PlaybackState, PlaybackStatus } from '@shared/types';
 import { MSG, sendMessage } from '@shared/messages';
 import { SPEED_PRESETS, PROVIDER_SPEED_RANGES, filterPresetsForRange } from '@shared/constants';
 
@@ -50,6 +50,7 @@ export interface ToolbarState {
   _setProviderId: (id: string | null) => void;
   _setProviderName: (name: string) => void;
   _showToast: (message: string) => void;
+  _syncPlaybackState: (state: PlaybackState) => void;
 }
 
 export const useToolbarStore = create<ToolbarState>((set, get) => ({
@@ -160,4 +161,15 @@ export const useToolbarStore = create<ToolbarState>((set, get) => ({
     set({ toastMessage: message });
     setTimeout(() => set({ toastMessage: null }), 3000);
   },
+  _syncPlaybackState: (state) =>
+    set((s) => ({
+      playbackStatus: state.status,
+      currentChunkIndex: state.currentChunkIndex,
+      totalChunks: state.totalChunks,
+      chunkProgress: state.chunkProgress,
+      currentChunkTime: state.currentTime,
+      speed: state.speed,
+      volume: state.volume,
+      toolbarVisible: state.status === 'idle' ? s.toolbarVisible : true,
+    })),
 }));

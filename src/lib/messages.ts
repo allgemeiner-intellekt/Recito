@@ -1,4 +1,4 @@
-import type { ProviderConfig, AppSettings } from './types';
+import type { ProviderConfig, AppSettings, PlaybackState } from './types';
 
 export const MSG = {
   // Transport controls (content/popup → SW → offscreen)
@@ -24,6 +24,7 @@ export const MSG = {
 
   // Playback events (offscreen → SW → content)
   PLAYBACK_PROGRESS: 'PLAYBACK_PROGRESS',
+  PLAYBACK_STATE_CHANGED: 'PLAYBACK_STATE_CHANGED',
   CHUNK_COMPLETE: 'CHUNK_COMPLETE',
   PLAYBACK_ERROR: 'PLAYBACK_ERROR',
   WORD_TIMING: 'WORD_TIMING',
@@ -155,6 +156,11 @@ export interface PlaybackProgressMessage {
   currentTime: number;
   duration: number;
   chunkIndex: number;
+}
+
+export interface PlaybackStateChangedMessage {
+  type: typeof MSG.PLAYBACK_STATE_CHANGED;
+  state: PlaybackState;
 }
 
 export interface ChunkCompleteMessage {
@@ -295,6 +301,7 @@ export type ExtensionMessage =
   | OffscreenSetSpeedMessage
   | OffscreenSetVolumeMessage
   | PlaybackProgressMessage
+  | PlaybackStateChangedMessage
   | ChunkCompleteMessage
   | PlaybackErrorMessage
   | WordTimingMessage
