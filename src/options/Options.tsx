@@ -70,10 +70,26 @@ interface ProviderFormData {
   mimoModel: string;
 }
 
-const EMPTY_FORM: ProviderFormData = { providerId: 'openai', name: '', apiKey: '', baseUrl: '', modelId: 'eleven_multilingual_v2', customModel: 'tts-1', mimoModel: 'mimo-v2.5-tts' };
+const DEFAULT_MIMO_MODEL_ID = MIMO_MODELS[0].modelId;
+const LEGACY_MIMO_MODEL_ID = 'mimo-v2-tts';
+type MimoModelId = (typeof MIMO_MODELS)[number]['modelId'];
+
+const EMPTY_FORM: ProviderFormData = { providerId: 'openai', name: '', apiKey: '', baseUrl: '', modelId: 'eleven_multilingual_v2', customModel: 'tts-1', mimoModel: DEFAULT_MIMO_MODEL_ID };
 
 function nextFormState(current: ProviderFormData, partial: Partial<ProviderFormData>): ProviderFormData {
   return { ...current, ...partial };
+}
+
+function isKnownMimoModel(value: unknown): value is MimoModelId {
+  return typeof value === 'string' && MIMO_MODELS.some((model) => model.modelId === value);
+}
+
+function getMimoFormModel(config: ProviderConfig): string {
+  if (config.providerId !== 'mimo') {
+    return DEFAULT_MIMO_MODEL_ID;
+  }
+  const storedModel = config.extraParams?.model;
+  return isKnownMimoModel(storedModel) ? storedModel : LEGACY_MIMO_MODEL_ID;
 }
 
 function getFormProviderConfig(
@@ -252,7 +268,7 @@ export function Options() {
       baseUrl: config.baseUrl ?? '',
       modelId: (config.extraParams?.model_id as string) ?? 'eleven_multilingual_v2',
       customModel: (config.extraParams?.model as string) ?? 'tts-1',
-      mimoModel: (config.extraParams?.model as string) ?? 'mimo-v2-tts',
+      mimoModel: getMimoFormModel(config),
     });
     setTestResult(null);
     setShowForm(true);

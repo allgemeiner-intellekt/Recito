@@ -12,6 +12,8 @@ export const MIMO_MODELS = [
 
 const MIMO_VOICES: Voice[] = [
   { id: 'mimo_default', name: 'Mimo Default' },
+  { id: 'default_zh', name: 'Chinese Female', language: 'zh' },
+  { id: 'default_en', name: 'English Female', language: 'en' },
   { id: '冰糖', name: '冰糖 (Bingtang)', language: 'zh' },
   { id: '茉莉', name: '茉莉 (Moli)', language: 'zh' },
   { id: '苏打', name: '苏打 (Suda)', language: 'zh' },
