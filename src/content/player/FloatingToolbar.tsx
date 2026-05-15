@@ -1,5 +1,6 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { useToolbarStore } from '../state/store';
+import { useShallow } from 'zustand/shallow';
 import {
   PlayPauseWithProgress,
   SkipButton,
@@ -13,17 +14,31 @@ import { useDrag } from './useDrag';
 
 export function FloatingToolbar() {
   const toolbarRef = useRef<HTMLDivElement>(null);
+
+  // Split selectors by change frequency to avoid unnecessary re-renders
+  const { playbackStatus, currentChunkIndex, totalChunks, chunkProgress } =
+    useToolbarStore(useShallow((s) => ({
+      playbackStatus: s.playbackStatus,
+      currentChunkIndex: s.currentChunkIndex,
+      totalChunks: s.totalChunks,
+      chunkProgress: s.chunkProgress,
+    })));
+
+  const { speed, volume, activeProviderId } =
+    useToolbarStore(useShallow((s) => ({
+      speed: s.speed,
+      volume: s.volume,
+      activeProviderId: s.activeProviderId,
+    })));
+
+  const { toolbarVisible, expanded, toastMessage } =
+    useToolbarStore(useShallow((s) => ({
+      toolbarVisible: s.toolbarVisible,
+      expanded: s.expanded,
+      toastMessage: s.toastMessage,
+    })));
+
   const {
-    playbackStatus,
-    currentChunkIndex,
-    totalChunks,
-    chunkProgress,
-    speed,
-    volume,
-    toolbarVisible,
-    expanded,
-    toastMessage,
-    activeProviderId,
     play,
     pause,
     resume,
@@ -34,7 +49,18 @@ export function FloatingToolbar() {
     setVolume,
     hideToolbar,
     toggleExpanded,
-  } = useToolbarStore();
+  } = useToolbarStore(useShallow((s) => ({
+    play: s.play,
+    pause: s.pause,
+    resume: s.resume,
+    stop: s.stop,
+    skipForward: s.skipForward,
+    skipBackward: s.skipBackward,
+    setSpeed: s.setSpeed,
+    setVolume: s.setVolume,
+    hideToolbar: s.hideToolbar,
+    toggleExpanded: s.toggleExpanded,
+  })));
 
   const { getStyle, onMouseDown } = useDrag(toolbarRef);
 
@@ -55,6 +81,18 @@ export function FloatingToolbar() {
     }
     prevVisible.current = toolbarVisible;
   }, [toolbarVisible]);
+
+  // Escape key to dismiss toolbar
+  useEffect(() => {
+    if (!toolbarVisible) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        hideToolbar();
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown, true);
+    return () => document.removeEventListener('keydown', handleKeyDown, true);
+  }, [toolbarVisible, hideToolbar]);
 
   if (!toolbarVisible) return null;
 
@@ -88,6 +126,8 @@ export function FloatingToolbar() {
       className={`ir-toolbar ${expanded ? 'ir-toolbar--expanded' : 'ir-toolbar--collapsed'} ${animClass}`}
       style={getStyle()}
       onMouseDown={onMouseDown}
+      role="toolbar"
+      aria-label="Text-to-speech controls"
     >
       <div className="ir-toolbar-controls">
         <SkipButton direction="backward" onClick={skipBackward} />

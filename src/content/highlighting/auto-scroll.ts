@@ -20,6 +20,10 @@ function onManualScroll(): void {
  * Start listening for manual scroll events so we can pause auto-scroll.
  */
 export function initAutoScroll(): void {
+  if (pauseTimer !== null) {
+    clearTimeout(pauseTimer);
+    pauseTimer = null;
+  }
   enabled = true;
   paused = false;
   boundOnWheel = onManualScroll;

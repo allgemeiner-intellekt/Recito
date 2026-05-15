@@ -98,6 +98,7 @@ export function ExpandedPanel() {
             className="ir-panel-select"
             value={activeGroupKey}
             onChange={handleProviderChange}
+            aria-label="Text-to-speech provider"
           >
             <option value="" disabled>Select a provider</option>
             {providerOptions.map((o) => (
@@ -109,6 +110,7 @@ export function ExpandedPanel() {
           className="ir-btn ir-panel-settings-icon"
           onClick={openSettings}
           title="Settings"
+          aria-label="Open settings"
         >
           <svg width="15" height="15" viewBox="0 0 20 20" fill="currentColor">
             <circle cx="10" cy="4" r="1.75" />

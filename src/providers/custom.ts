@@ -1,5 +1,5 @@
 import type { TTSProvider, ProviderConfig, Voice, SynthesisResult, SynthesisOptions } from '@shared/types';
-import { buildOpenAICompatibleUrl, validateOpenAICompatibleSpeech } from './openai-compatible';
+import { buildOpenAICompatibleUrl, validateOpenAICompatibleSpeech, assertAudioContentType } from './openai-compatible';
 import { ApiError } from '@shared/api-error';
 import { withTimeoutSignal } from '@shared/abort';
 
@@ -68,6 +68,8 @@ export const customProvider: TTSProvider = {
       }
       throw ApiError.fromResponse(response.status, errBody || response.statusText, 'custom', response.headers);
     }
+
+    assertAudioContentType(response, config.id);
 
     const audioData = await response.arrayBuffer();
     return { audioData, format };

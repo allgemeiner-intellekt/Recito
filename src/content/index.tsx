@@ -22,12 +22,19 @@ import { initTextScrubber, destroyTextScrubber } from './highlighting/text-scrub
 
 console.log('Recito: content script loaded');
 
+// Module-level references for native-media detection listeners
+let nativeMediaOnPlay: ((this: Document, ev: Event) => void) | null = null;
+let nativeMediaOnPauseOrEnd: ((this: Document, ev: Event) => void) | null = null;
+
 // Auto-hide toolbar when native media (video/audio) plays
 function setupNativeMediaDetection() {
+  // Clean up any previously registered listeners (handles re-injection)
+  cleanupNativeMediaDetection();
+
   const store = useToolbarStore.getState;
   let wasVisibleBeforeMedia = false;
 
-  const onNativePlay = () => {
+  nativeMediaOnPlay = () => {
     const state = store();
     if (state.toolbarVisible) {
       wasVisibleBeforeMedia = true;
@@ -35,7 +42,7 @@ function setupNativeMediaDetection() {
     }
   };
 
-  const onNativePauseOrEnd = () => {
+  nativeMediaOnPauseOrEnd = () => {
     if (wasVisibleBeforeMedia) {
       wasVisibleBeforeMedia = false;
       store().showToolbar();
@@ -43,9 +50,21 @@ function setupNativeMediaDetection() {
   };
 
   // Capture phase to catch events from all media elements
-  document.addEventListener('play', onNativePlay, true);
-  document.addEventListener('pause', onNativePauseOrEnd, true);
-  document.addEventListener('ended', onNativePauseOrEnd, true);
+  document.addEventListener('play', nativeMediaOnPlay, true);
+  document.addEventListener('pause', nativeMediaOnPauseOrEnd, true);
+  document.addEventListener('ended', nativeMediaOnPauseOrEnd, true);
+}
+
+function cleanupNativeMediaDetection(): void {
+  if (nativeMediaOnPlay) {
+    document.removeEventListener('play', nativeMediaOnPlay, true);
+    nativeMediaOnPlay = null;
+  }
+  if (nativeMediaOnPauseOrEnd) {
+    document.removeEventListener('pause', nativeMediaOnPauseOrEnd, true);
+    document.removeEventListener('ended', nativeMediaOnPauseOrEnd, true);
+    nativeMediaOnPauseOrEnd = null;
+  }
 }
 
 setupNativeMediaDetection();
@@ -97,10 +116,14 @@ chrome.runtime.onMessage.addListener(
 // Listen for settings changes to update highlight colors in real-time
 chrome.storage.onChanged.addListener((changes, areaName) => {
   if (areaName !== 'local' || !changes['ir-settings']) return;
-  const newSettings = changes['ir-settings'].newValue;
-  if (newSettings?.highlight && highlightManager) {
-    const resolved = resolveHighlightSettings(newSettings.highlight, newSettings.themeColor ?? null);
-    highlightManager.updateColors(resolved);
+  try {
+    const newSettings = changes['ir-settings'].newValue;
+    if (newSettings?.highlight && highlightManager) {
+      const resolved = resolveHighlightSettings(newSettings.highlight, newSettings.themeColor ?? null);
+      highlightManager.updateColors(resolved);
+    }
+  } catch (err) {
+    console.error('[content] Failed to update highlight settings:', err);
   }
 });
 
@@ -275,6 +298,7 @@ async function handleMessage(message: ExtensionMessage): Promise<unknown> {
       highlightManager?.destroy();
       highlightManager = null;
       destroyAutoScroll();
+      cleanupNativeMediaDetection();
       store._setPlaybackStatus('idle');
       return { ok: true };
     }
@@ -362,6 +386,8 @@ function recomputeChunkOffsets(chunks: TextChunk[], domText: string): void {
       chunk.startOffset = idx;
       chunk.endOffset = idx + chunk.text.length;
       searchFrom = chunk.endOffset;
+    } else {
+      console.warn('[content] Could not locate chunk in DOM text:', chunk.text.slice(0, 50));
     }
     // If neither match works, keep the original offsets as a last resort
   }

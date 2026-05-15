@@ -69,10 +69,11 @@ export function SpeedSlider({
   return (
     <>
       <div className={cls.row}>
-        <label className={cls.label}>Speed</label>
+        <label className={cls.label} htmlFor="ir-speed-slider">Speed</label>
         <span className={cls.valueLabel}>{formatSpeed(value)}</span>
       </div>
       <input
+        id="ir-speed-slider"
         type="range"
         className={cls.slider}
         min={effectiveMin}

@@ -1,5 +1,5 @@
 import type { TTSProvider, ProviderConfig, Voice, SynthesisResult, SynthesisOptions } from '@shared/types';
-import { buildOpenAICompatibleUrl, validateOpenAICompatibleSpeech } from './openai-compatible';
+import { buildOpenAICompatibleUrl, validateOpenAICompatibleSpeech, assertAudioContentType } from './openai-compatible';
 import { hasLikelyValidApiKeyFormat } from './api-key-format';
 import { ApiError } from '@shared/api-error';
 import { withTimeoutSignal } from '@shared/abort';
@@ -78,6 +78,8 @@ export const groqProvider: TTSProvider = {
       }
       throw ApiError.fromResponse(response.status, errBody || response.statusText, 'groq', response.headers);
     }
+
+    assertAudioContentType(response, 'groq');
 
     const audioData = await response.arrayBuffer();
     return { audioData, format: 'wav' };

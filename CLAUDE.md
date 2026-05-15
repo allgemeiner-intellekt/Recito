@@ -33,6 +33,7 @@ TypeScript 5 (strict), React 18, Vite 5 + @crxjs/vite-plugin, Zustand 5, Vitest,
 - **Provider groups**: Multiple API keys per provider. Standard providers grouped by `providerId`, custom providers grouped by `custom:{baseUrl}`. Active provider stored per group.
 - **Reading progress**: URL-based position saved in `chrome.storage.local` with 7-day TTL. Auto-saves after each chunk; clears on completion.
 - **Storage**: Provider configs and settings in `chrome.storage.local` (never sync).
+- **State sync model**: Content script Zustand store receives state updates from the background via typed messages. Background `PlaybackStateManager` is the single source of truth. Session generation is incremented on every config switch/failover so that in-flight synthesis results from the stale session are discarded. Only one tab plays at a time; starting playback on a new tab aborts the previous session.
 
 ## Providers
 

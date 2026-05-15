@@ -128,6 +128,19 @@ async function initSession(): Promise<PlaybackSession> {
   return session;
 }
 
+/**
+ * Begin playback on the given tab.
+ *
+ * Flow:
+ * 1. Abort any existing playback and set status to loading.
+ * 2. Ensure the content script is injected.
+ * 3. Lock the provider config and voice for the session.
+ * 4. Request the content script to extract and chunk the page text.
+ * 5. Restore saved reading progress for this URL, if any.
+ * 6. Enter the sequential playback loop.
+ *
+ * Each step communicates with the content script via typed messages.
+ */
 export async function startPlayback(tabId: number, fromSelection = false): Promise<void> {
   // Abort any ongoing playback
   stopPlayback();
@@ -449,6 +462,21 @@ function getOrStartSynthesis(
   return promise;
 }
 
+/**
+ * Prefetch upcoming chunks while the current chunk plays.
+ *
+ * Buffer strategy: keeps up to LOOKAHEAD_BUFFER_SIZE chunks ahead
+ * synthesized and cached. Each prefetch is kicked off in parallel
+ * via getOrStartSynthesis (which deduplicates overlapping requests).
+ *
+ * Eviction: entries far from the current playback position are
+ * removed from prefetchCache to stay within MAX_CACHE_SIZE and
+ * MAX_CACHE_BASE64_CHARS limits.
+ *
+ * Seamless playback: when the immediate next chunk finishes before
+ * the current one ends, it is scheduled in the offscreen player
+ * so playback continues without a gap.
+ */
 function startLookahead(
   tabId: number,
   currentIndex: number,
@@ -542,7 +570,15 @@ async function synthesizeChunk(
 }
 
 /**
- * Synthesize with automatic failover to backup API keys on retryable errors.
+ * Synthesize a single chunk with automatic retry and failover.
+ *
+ * Retry logic: up to 3 attempts total. 5xx and network errors retry
+ * the same config once with exponential backoff before failing over.
+ *
+ * Failover behavior: on a retryable error, marks the current config
+ * as failed/cooldown, clears the prefetch cache and in-flight work,
+ * bumps the session generation to invalidate stale requests, and
+ * switches to the next healthy config in the same provider group.
  */
 async function synthesizeChunkWithFailover(
   tabId: number,
@@ -593,14 +629,15 @@ async function synthesizeChunkWithFailover(
 
       // Switch session to the backup config
       console.log(`Failover: switching from config ${failedConfigId} to ${candidate.id}`);
-      currentSession = {
-        ...currentSession!,
-        config: candidate,
-        generation: ++sessionGeneration,
-      };
       prefetchCache.clear();
       inFlightSyntheses.clear();
       offscreenPrimedChunkIndex = null;
+      sessionGeneration++;
+      currentSession = {
+        ...currentSession!,
+        config: candidate,
+        generation: sessionGeneration,
+      };
 
       // Notify content script of failover
       if (activeTabId) {

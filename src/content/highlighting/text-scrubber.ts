@@ -9,6 +9,9 @@ let nodeMap: WeakMap<Text, TextNodeEntry> | null = null;
 let lastHoveredChunkIndex = -1;
 let rafId = 0;
 
+const HAS_CARET_POSITION = 'caretPositionFromPoint' in document;
+const HAS_CARET_RANGE = 'caretRangeFromPoint' in document;
+
 const INTERACTIVE_SELECTOR =
   'a, button, input, select, textarea, [role="button"], [role="link"]';
 
@@ -25,14 +28,14 @@ function getCaretInfo(
   y: number,
 ): { node: Text; offset: number } | null {
   // caretPositionFromPoint (standard, Chrome 128+)
-  if ('caretPositionFromPoint' in document) {
+  if (HAS_CARET_POSITION) {
     const pos = document.caretPositionFromPoint(x, y);
     if (pos?.offsetNode instanceof Text) {
       return { node: pos.offsetNode, offset: pos.offset };
     }
   }
   // caretRangeFromPoint (WebKit/Blink fallback)
-  if ('caretRangeFromPoint' in document) {
+  if (HAS_CARET_RANGE) {
     const range = document.caretRangeFromPoint(x, y);
     if (range?.startContainer instanceof Text) {
       return { node: range.startContainer, offset: range.startOffset };

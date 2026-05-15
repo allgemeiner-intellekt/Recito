@@ -13,7 +13,15 @@ export interface ConfigHealth {
 
 const healthMap = new Map<string, ConfigHealth>();
 
-// Cooldown durations in ms
+/**
+ * Cooldown durations in ms.
+ *
+ * Rationale:
+ * - 429 (rate limit): 60s matches typical provider rate-limit reset windows.
+ * - 403 (quota): 5min because quota resets are slow/manual.
+ * - 5xx (server): 30s for transient server recovery.
+ * - Network: 30s for transient connectivity issues.
+ */
 const COOLDOWN_429 = 60_000;       // 1 minute for rate limits
 const COOLDOWN_403 = 5 * 60_000;   // 5 minutes for quota
 const COOLDOWN_5XX = 30_000;       // 30 seconds for server errors

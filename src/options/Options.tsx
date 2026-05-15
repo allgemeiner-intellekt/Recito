@@ -698,11 +698,21 @@ export function Options() {
 
             {/* Add/Edit Modal */}
             {showForm && (
-              <div className="modal-overlay" onClick={() => setShowForm(false)}>
+              <div
+                className="modal-overlay"
+                onClick={() => setShowForm(false)}
+                onKeyDown={(e) => { if (e.key === 'Escape') setShowForm(false); }}
+                role="button"
+                tabIndex={-1}
+                aria-label="Close modal"
+              >
+                {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions */}
                 <div
                   className="modal"
                   onClick={(e) => e.stopPropagation()}
+                  onKeyDown={(e) => e.stopPropagation()}
                   role="dialog"
+                  tabIndex={-1}
                   aria-label={editingId ? 'Edit provider' : 'Add provider'}
                 >
                   <h2>{editingId ? 'Edit Provider' : 'Add Provider'}</h2>

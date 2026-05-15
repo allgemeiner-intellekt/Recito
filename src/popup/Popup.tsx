@@ -38,7 +38,7 @@ export function Popup() {
     })();
   }, []);
 
-  // Poll playback state
+  // Poll playback state (visibility-aware)
   useEffect(() => {
     const poll = async () => {
       try {
@@ -48,9 +48,36 @@ export function Popup() {
         /* SW not ready */
       }
     };
-    poll();
-    const id = setInterval(poll, 500);
-    return () => clearInterval(id);
+
+    let intervalId: ReturnType<typeof setInterval> | null = null;
+
+    const startPolling = () => {
+      poll();
+      intervalId = setInterval(poll, 500);
+    };
+
+    const stopPolling = () => {
+      if (intervalId !== null) {
+        clearInterval(intervalId);
+        intervalId = null;
+      }
+    };
+
+    const onVisibilityChange = () => {
+      if (document.hidden) {
+        stopPolling();
+      } else {
+        startPolling();
+      }
+    };
+
+    startPolling();
+    document.addEventListener('visibilitychange', onVisibilityChange);
+
+    return () => {
+      stopPolling();
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
   }, []);
 
   // Get page info from active tab

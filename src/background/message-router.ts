@@ -29,8 +29,12 @@ export async function routeMessage(
       case MSG.PLAY: {
         const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
         if (tab?.id) {
-          startPlayback(tab.id, message.fromSelection).catch(console.error);
-          sendResponse({ ok: true });
+          try {
+            await startPlayback(tab.id, message.fromSelection);
+            sendResponse({ ok: true });
+          } catch (err) {
+            sendResponse({ error: err instanceof Error ? err.message : String(err) });
+          }
         } else {
           sendResponse({ error: 'No active tab' });
         }

@@ -290,8 +290,10 @@ export class AudioPlayer {
   }
 
   private sendMessage(message: Record<string, unknown>): void {
-    chrome.runtime.sendMessage(message).catch(() => {
-      // Service worker may not be listening
+    chrome.runtime.sendMessage(message).catch((err) => {
+      if (!err?.message?.includes('Receiving end does not exist')) {
+        console.debug('[audio-player] sendMessage error:', err);
+      }
     });
   }
 }

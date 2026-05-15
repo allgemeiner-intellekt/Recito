@@ -1,9 +1,27 @@
+import { ApiError } from '@shared/api-error';
+
 export function buildOpenAICompatibleUrl(baseUrl: string, path: string): string {
   const trimmedBaseUrl = baseUrl.trim().replace(/\/+$/, '');
   const baseWithVersion = /\/v1$/i.test(trimmedBaseUrl) ? trimmedBaseUrl : `${trimmedBaseUrl}/v1`;
   const normalizedPath = path.startsWith('/') ? path : `/${path}`;
 
   return `${baseWithVersion}${normalizedPath}`;
+}
+
+/**
+ * Assert that a TTS response has an audio content-type.
+ * Throws ApiError if the content-type is not audio/* or application/octet-stream.
+ */
+export function assertAudioContentType(response: Response, providerId: string): void {
+  const contentType = response.headers.get('content-type') ?? '';
+  if (!contentType.includes('audio/') && !contentType.includes('application/octet-stream')) {
+    throw new ApiError(
+      `Unexpected response type: ${contentType || 'unknown'}`,
+      response.status,
+      providerId,
+      false,
+    );
+  }
 }
 
 export async function validateOpenAICompatibleKey(

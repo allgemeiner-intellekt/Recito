@@ -47,6 +47,7 @@ export function PlayPauseButton({ isPlaying, isLoading, onClick, large }: PlayPa
       onClick={onClick}
       disabled={isLoading}
       title={isPlaying ? 'Pause' : 'Play'}
+      aria-label={isPlaying ? 'Pause' : 'Play'}
       style={{ width: size, height: size }}
     >
       {isLoading ? (
@@ -84,6 +85,7 @@ export function SkipButton({ direction, onClick }: SkipButtonProps) {
       className="ir-btn ir-skip"
       onClick={handleClick}
       title={direction === 'forward' ? 'Skip forward' : 'Skip backward'}
+      aria-label={direction === 'forward' ? 'Skip forward' : 'Skip backward'}
     >
       <Icon path={direction === 'forward' ? SKIP_FORWARD_PATH : SKIP_BACKWARD_PATH} size={18} />
     </button>
@@ -122,6 +124,7 @@ export function SpeedPopup({ speed, onChangeSpeed, activeProviderId }: SpeedPopu
         className="ir-btn ir-speed-chip"
         onClick={() => setOpen(!open)}
         title="Change speed"
+        aria-label="Speed control"
       >
         {formatSpeed(speed)}
       </button>
@@ -132,6 +135,7 @@ export function SpeedPopup({ speed, onChangeSpeed, activeProviderId }: SpeedPopu
               key={s}
               className={`ir-speed-popup-item${s === speed ? ' ir-speed-popup-item--active' : ''}`}
               onClick={() => { onChangeSpeed(s); setOpen(false); }}
+              aria-label={`${formatSpeed(s)} speed`}
             >
               {formatSpeed(s)}
             </button>
@@ -170,6 +174,7 @@ export function VolumeSlider({ volume, onChange }: VolumeSliderProps) {
         value={volume}
         onChange={(e) => onChange(parseFloat(e.target.value))}
         title={`Volume: ${Math.round(volume * 100)}%`}
+        aria-label="Volume control"
         style={{ '--fill': `${volume * 100}%` } as React.CSSProperties}
       />
     </div>
@@ -240,6 +245,7 @@ export function PlayPauseWithProgress({
         onClick={onClick}
         disabled={isLoading}
         title={isPlaying ? 'Pause' : 'Play'}
+        aria-label={isPlaying ? 'Pause' : 'Play'}
       >
         {isLoading ? (
           <span className="ir-spinner" />
@@ -259,7 +265,7 @@ interface CloseButtonProps {
 
 export function CloseButton({ onClick }: CloseButtonProps) {
   return (
-    <button className="ir-btn ir-close" onClick={onClick} title="Close">
+    <button className="ir-btn ir-close" onClick={onClick} title="Close" aria-label="Close toolbar">
       <Icon path={CLOSE_PATH} size={16} />
     </button>
   );
@@ -278,6 +284,7 @@ export function ExpandButton({ expanded, onClick }: ExpandButtonProps) {
       className={`ir-btn ir-expand${expanded ? ' ir-expand--open' : ''}`}
       onClick={onClick}
       title={expanded ? 'Collapse' : 'Expand'}
+      aria-label={expanded ? 'Collapse' : 'Expand'}
     >
       <svg
         width="16"
