@@ -5,6 +5,10 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   build:
@@ -20,3 +24,10 @@ jobs:
       - run: npm run lint
       - run: npm run test
       - run: npm run build
+      - name: Upload Chrome extension
+        uses: actions/upload-artifact@v4
+        with:
+          name: recito-chrome
+          path: dist/
+          if-no-files-found: error
+          retention-days: 30

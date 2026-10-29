@@ -141,6 +141,9 @@ vite.config.ts.timestamp-*
 # Local test build
 .tmp-tests/
 
+# Temporary cloud-update downloads
+.recito-update.*/
+
 # macOS
 .DS_store
 reference/

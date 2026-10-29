@@ -66,6 +66,32 @@ You can add multiple API keys per provider. Keys are stored locally in `chrome.s
 
 Coming soon.
 
+### Download a Cloud Build
+
+No local Node.js installation or compilation is required.
+
+1. Sign in to GitHub and open [Actions → CI](https://github.com/allgemeiner-intellekt/Recito/actions/workflows/ci.yml).
+2. Select a successful run for the `main` branch. To request a fresh build, click **Run workflow**, select `main`, and wait for it to finish.
+3. Under **Artifacts**, download **recito-chrome**. Build artifacts are retained for 30 days. Builds also run automatically for pushes and pull requests to `main`.
+4. Extract the downloaded ZIP into a folder you will keep on your computer.
+5. Open `chrome://extensions`, enable **Developer mode**, click **Load unpacked**, and select the extracted folder containing `manifest.json`.
+
+To update, replace the contents of that folder with a newer cloud build and click **Reload** on the extension in `chrome://extensions`.
+
+### Quick Updates in Brave on macOS
+
+If Brave already loads this repository's `dist` folder, keep that installation. The updater downloads a cloud build into the same folder, so you can keep your existing extension ID and settings without reinstalling or compiling locally.
+
+1. Install [GitHub CLI](https://cli.github.com) and sign in once with `gh auth login --hostname github.com`.
+2. Double-click [`update-extension.command`](./update-extension.command) in Finder, or run `./update-extension.command` in a terminal.
+3. When the download finishes, the script opens `brave://extensions`. Click **Reload** on Recito, then refresh any pages where you use it.
+
+The updater selects the latest successful `main` CI run triggered by a push or a manual run. Pull-request preview builds are excluded. It downloads and checks the new build before replacing `dist`; a failed download leaves your installed files untouched. If the artifact has expired or is missing, request a fresh build with **Run workflow** in Actions. Updating does not require `git pull`, npm, or Node.js.
+
+For a first install, run the updater, then use **Load unpacked** in `brave://extensions` to select this repository's `dist` folder. Keep that path fixed and use **Reload** for later updates.
+
+Unpacked installations still need the browser's **Reload** step. Browser-managed automatic updates are available through a Chrome Web Store installation once the extension is published there.
+
 ### Developer Install
 
 1. Clone the repository:
