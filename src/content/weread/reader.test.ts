@@ -8,12 +8,13 @@ import { initAutoScroll, destroyAutoScroll } from '../highlighting/auto-scroll';
 
 let dispose: () => void;
 const originalRangeRect = Object.getOwnPropertyDescriptor(Range.prototype, 'getBoundingClientRect');
-const rangeRect = vi.fn(function(this: Range) {
+function measureRangeRect(this: Range) {
   const parent = this.startContainer.parentElement!;
   const x = Number(parent.dataset.x ?? 0) + this.startOffset * 21;
   const y = Number(parent.dataset.y ?? 0);
   return { left: x, top: y, width: 21, height: 30, bottom: y + 30, right: x + 21 } as DOMRect;
-});
+}
+const rangeRect = vi.fn(measureRangeRect);
 
 beforeEach(() => {
   document.body.innerHTML = `<div id="preRenderContainer"><style>ignored</style><div class="chapterTitle">标题</div><p data-y="0">前文</p><p data-y="60">后段</p></div>
@@ -23,6 +24,7 @@ beforeEach(() => {
     return { left: live ? 10 : 0, top: live ? 100 : 0, width: Number((this as HTMLElement).dataset.width ?? 798), height: 90 } as DOMRect;
   });
   rangeRect.mockClear();
+  rangeRect.mockImplementation(measureRangeRect);
   Object.defineProperty(Range.prototype, 'getBoundingClientRect', { configurable: true, value: rangeRect });
   dispose = installWereadCapture();
 });
@@ -79,6 +81,18 @@ describe('WeRead prototype', () => {
     const chapter = await extractWeread();
     expect(chapter.runs[1]).toMatchObject({ text: '😀', startOffset: 1, endOffset: 3 });
     for (const run of chapter.runs) expect(chapter.text.slice(run.startOffset, run.endOffset)).toBe(run.text);
+  });
+
+  it('retains collapsed inline spaces after English punctuation', async () => {
+    document.querySelector('#preRenderContainer p')!.textContent = 'day, he';
+    rangeRect.mockImplementation(function(this: Range) {
+      const rect = measureRangeRect.call(this);
+      return this.toString() === ' ' ? { ...rect, width: 0 } as DOMRect : rect;
+    });
+    capture();
+    const chapter = await extractWeread();
+    expect(chapter.text).toContain('day, he');
+    expect(chapter.runs.find(run => run.text === 'h')).toMatchObject({ spaceBefore: true });
   });
 
   it('sorts mixed language by geometry and preserves sentence offsets', () => {

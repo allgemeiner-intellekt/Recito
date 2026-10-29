@@ -6,6 +6,8 @@ export interface CapturedRun {
   width: number;
   height: number;
   baseline: number;
+  /** The source had whitespace whose DOM Range collapsed to zero width. */
+  spaceBefore?: boolean;
 }
 
 export interface WereadCapture {
@@ -18,6 +20,12 @@ export interface WereadCapture {
 export interface PositionedRun extends CapturedRun {
   startOffset: number;
   endOffset: number;
+}
+
+function needsWordSeparator(left: string, right: string): boolean {
+  if (!left || !right || /\s$/.test(left) || /^\s/.test(right)) return false;
+  return /[\p{Script=Latin}\p{N},.;:!?…)\]"”’]$/u.test(left)
+    && /^[\p{Script=Latin}\p{N}("“‘']/u.test(right);
 }
 
 /** Reconstruct reading order without inserting spaces between Chinese glyphs. */
@@ -38,12 +46,15 @@ export function assembleChapter(input: CapturedRun[]): { text: string; runs: Pos
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i].sort((a, b) => a.x - b.x);
     if (i > 0 && gaps[i - 1] > normalGap * 1.35) text += '\n\n';
-    else if (i > 0 && /[A-Za-z0-9]$/.test(text) && /^[A-Za-z0-9]/.test(line[0].text)) text += ' ';
+    else if (i > 0 && needsWordSeparator(text, line[0].text)) text += ' ';
     for (let j = 0; j < line.length; j++) {
       const run = line[j];
       const previous = line[j - 1];
-      if (previous && run.x - previous.x - previous.width > run.height * 0.2
-          && /[A-Za-z0-9]$/.test(text) && /^[A-Za-z0-9]/.test(run.text)) text += ' ';
+      const sourceSpace = run.spaceBefore === true
+        && (/[\p{Script=Latin}\p{N}]$/u.test(text) || /^[\p{Script=Latin}\p{N}]/u.test(run.text));
+      const layoutSpace = previous && run.x - previous.x - previous.width > Math.min(run.height, previous.height) * 0.12
+        && needsWordSeparator(text, run.text);
+      if ((sourceSpace || layoutSpace) && text && !/\s$/.test(text) && !/^\s/.test(run.text)) text += ' ';
       const startOffset = text.length;
       text += run.text;
       runs.push({ ...run, startOffset, endOffset: text.length });

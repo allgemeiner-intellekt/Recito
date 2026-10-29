@@ -26,6 +26,7 @@ export function installWereadCapture(): () => void {
           const range = document.createRange();
           let node: Node | null;
           let truncated = false;
+          let pendingSpace = false;
           while ((node = walker.nextNode())) {
             const parent = node.parentElement;
             if (!parent || parent.closest('style, script, noscript, .chapterTitle, [data-wr-id="chapterTitle"]')) continue;
@@ -38,8 +39,10 @@ export function installWereadCapture(): () => void {
               const box = range.getBoundingClientRect();
               if (box.width > 0 && box.height > 0) {
                 runs.push({ text: character, x: box.left - rect.left, y: box.top - rect.top,
-                  width: box.width, height: box.height, baseline: box.top - rect.top + box.height / 2 });
-              }
+                  width: box.width, height: box.height, baseline: box.top - rect.top + box.height / 2,
+                  ...(pendingSpace ? { spaceBefore: true } : {}) });
+                pendingSpace = false;
+              } else if (/\s/.test(character)) pendingSpace = true;
               offset += character.length;
               if (runs.length >= 50000) { truncated = true; break; }
             }
