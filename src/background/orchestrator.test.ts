@@ -127,10 +127,10 @@ vi.stubGlobal('chrome', {
 });
 
 // ── Import after mocks ──────────────────────────────────────────────────
-import { stopPlayback, startPlayback, pausePlayback, resumePlayback, setSpeed, setVolume, getActiveTab } from './orchestrator';
+import { stopPlayback, startPlayback, pausePlayback, resumePlayback, setSpeed, setVolume, getActiveTab, skipToChunk } from './orchestrator';
 import { playbackState } from './playback-state';
 import { stopWordTimingRelay } from './word-timing';
-import { getActiveProvider, getSettings } from '@shared/storage';
+import { getActiveProvider, getSettings, saveProgress } from '@shared/storage';
 import { getProvider } from '@providers/registry';
 
 const mockGetActiveProvider = getActiveProvider as ReturnType<typeof vi.fn>;
@@ -244,6 +244,39 @@ describe('orchestrator', () => {
   });
 
   describe('startPlayback', () => {
+    it('observes completion delivered immediately with audio and preserves progress after seek', async () => {
+      mockGetActiveProvider.mockResolvedValue({ id: 'immediate', providerId: 'groq' });
+      mockGetSettings.mockResolvedValue({ activeVoiceId: 'v1' });
+      mockGetProvider.mockReturnValue({
+        listVoices: vi.fn().mockResolvedValue([{ id: 'v1', name: 'Voice' }]),
+        synthesize: vi.fn().mockResolvedValue({ audioData: new ArrayBuffer(1), format: 'mp3' }),
+      });
+      mockSendTabMessage.mockImplementation(async (_tab, message) => {
+        if (message.type === MSG.EXTRACT_CONTENT) return { totalChunks: 3 };
+        if (message.type === MSG.GET_PAGE_URL) return 'https://example.com/seek';
+        if (message.type === MSG.GET_CHUNK) return { text: 'Some text', index: message.index };
+      });
+      const listeners = new Set<(message: unknown) => void>();
+      mockRuntimeOnMessage.addListener.mockImplementation((listener) => listeners.add(listener));
+      mockRuntimeOnMessage.removeListener.mockImplementation((listener) => listeners.delete(listener));
+      const seek = vi.fn();
+      mockRuntimeSendMessage.mockImplementation(async (message) => {
+        if (message.type === MSG.OFFSCREEN_PLAY) {
+          if (message.chunkIndex === 0) seek();
+          else for (const listener of listeners) listener({ type: MSG.CHUNK_COMPLETE, chunkIndex: message.chunkIndex });
+        }
+      });
+      const first = startPlayback(1);
+      await vi.waitFor(() => expect(seek).toHaveBeenCalled());
+      await skipToChunk(2);
+      await first;
+      expect(saveProgress).toHaveBeenCalledWith(expect.objectContaining({
+        url: 'https://example.com/seek', chunkIndex: 3,
+      }));
+      expect(listeners.size).toBe(0);
+      mockRuntimeSendMessage.mockResolvedValue(undefined);
+    });
+
     it('stops previous playback before starting a new session', async () => {
       mockGetActiveProvider.mockResolvedValue({
         id: 'cfg-1',

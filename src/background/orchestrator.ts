@@ -11,6 +11,7 @@ import { ApiError } from '@shared/api-error';
 import { getCachedVoices, setCachedVoices } from '@providers/voice-cache';
 import { PlaybackLatencyTracker } from './latency-metrics';
 import { evictAudioCache } from './playback-cache';
+import { waitForChunkComplete } from './chunk-completion';
 import {
   markFailed,
   getNextCandidate,
@@ -296,7 +297,7 @@ export async function skipToChunk(chunkIndex: number): Promise<void> {
 
   playbackState.update({ currentChunkIndex: chunkIndex, status: 'loading' });
   await ensureOffscreenDocument();
-  await playChunksSequentially(activeTabId, chunkIndex, state.totalChunks);
+  await playChunksSequentially(activeTabId, chunkIndex, state.totalChunks, currentPageUrl);
 }
 
 export function setSpeed(speed: number): void {
@@ -362,6 +363,9 @@ async function playChunksSequentially(
     // Evict cache entries furthest from current position
     evictAudioCache(prefetchCache, i, MAX_CACHE_SIZE, MAX_CACHE_BASE64_CHARS);
 
+    // Listen before sending audio: even a short chunk may finish during message delivery.
+    const completion = waitForChunkComplete(i, signal);
+
     // Send audio to offscreen as base64 (ArrayBuffer can't be serialized in Chrome messages).
     playbackState.setStatus('playing');
     currentChunkSynthesizedSpeed = synthesized.synthesizedSpeed;
@@ -393,12 +397,13 @@ async function playChunksSequentially(
     } catch {
       // Content script may not respond
     }
+    if (signal?.aborted) return;
     if (chunkResult && 'text' in chunkResult) {
       startWordTimingRelay(tabId, i, chunkResult.text, synthesized.wordTimings);
     }
 
     // Wait for chunk to complete
-    await waitForChunkComplete(i, signal);
+    await completion;
 
     if (signal?.aborted) return;
 
@@ -652,43 +657,6 @@ async function synthesizeChunkWithFailover(
   }
 
   throw new Error('Max failover attempts exceeded.');
-}
-
-function waitForChunkComplete(
-  chunkIndex: number,
-  signal?: AbortSignal,
-): Promise<void> {
-  return new Promise<void>((resolve) => {
-    if (signal?.aborted) {
-      resolve();
-      return;
-    }
-
-    const listener = (message: ExtensionMessage) => {
-      if (
-        message.type === MSG.CHUNK_COMPLETE &&
-        'chunkIndex' in message &&
-        message.chunkIndex === chunkIndex
-      ) {
-        chrome.runtime.onMessage.removeListener(listener);
-        resolve();
-      } else if (
-        message.type === MSG.PLAYBACK_ERROR &&
-        'chunkIndex' in message &&
-        message.chunkIndex === chunkIndex
-      ) {
-        chrome.runtime.onMessage.removeListener(listener);
-        resolve();
-      }
-    };
-
-    chrome.runtime.onMessage.addListener(listener);
-
-    signal?.addEventListener('abort', () => {
-      chrome.runtime.onMessage.removeListener(listener);
-      resolve();
-    });
-  });
 }
 
 // Handle progress messages from offscreen
