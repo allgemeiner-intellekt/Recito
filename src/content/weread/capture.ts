@@ -1,0 +1,71 @@
+import type { CapturedRun, WereadCapture } from './model';
+import type { WereadCaptureRequest, WereadCaptureResponse } from '@shared/messages';
+
+/** Prototype: retain the chapter's DOM geometry just before WeRead converts it to Canvas. */
+export function installWereadCapture(): () => void {
+  const original = Element.prototype.getBoundingClientRect;
+  const seen = new WeakMap<Element, string>();
+  let snapshot: WereadCapture = { runs: [], width: 0, captureMs: 0, truncated: false };
+  let capturing = false;
+  const requestType: WereadCaptureRequest['type'] = 'recito:weread:request';
+  const responseType: WereadCaptureResponse<WereadCapture>['type'] = 'recito:weread:response';
+
+  Element.prototype.getBoundingClientRect = function() {
+    const rect = original.call(this);
+    // The site's layout collector measures this temporary element after fonts
+    // have loaded, before the DOM is removed. Other measurements pass through.
+    if (!capturing && (this.id === 'preRenderContainer' || this.classList.contains('preRenderContainer')) && rect.width > 0) {
+      capturing = true;
+      try {
+        const html = this.innerHTML;
+        const key = `${rect.width}:${rect.height}:${html}`;
+        if (seen.get(this) !== key) {
+          const start = performance.now();
+          const runs: CapturedRun[] = [];
+          const walker = document.createTreeWalker(this, NodeFilter.SHOW_TEXT);
+          const range = document.createRange();
+          let node: Node | null;
+          let truncated = false;
+          while ((node = walker.nextNode())) {
+            const parent = node.parentElement;
+            if (!parent || parent.closest('style, script, noscript, .chapterTitle, [data-wr-id="chapterTitle"]')) continue;
+            const text = node.nodeValue ?? '';
+            if (!text.trim()) continue;
+            for (let offset = 0; offset < text.length;) {
+              const character = String.fromCodePoint(text.codePointAt(offset)!);
+              range.setStart(node, offset);
+              range.setEnd(node, offset + character.length);
+              const box = range.getBoundingClientRect();
+              if (box.width > 0 && box.height > 0) {
+                runs.push({ text: character, x: box.left - rect.left, y: box.top - rect.top,
+                  width: box.width, height: box.height, baseline: box.top - rect.top + box.height / 2 });
+              }
+              offset += character.length;
+              if (runs.length >= 50000) { truncated = true; break; }
+            }
+            if (truncated) break;
+          }
+          if (runs.length > 0) {
+            snapshot = { runs, width: rect.width, captureMs: performance.now() - start, truncated };
+            seen.set(this, key);
+          }
+        }
+      } catch {
+        // Never interrupt the site's layout if this prototype cannot capture it.
+      } finally {
+        capturing = false;
+      }
+    }
+    return rect;
+  };
+
+  const onRequest = () => {
+    const response: WereadCaptureResponse<WereadCapture> = { type: responseType, payload: snapshot };
+    document.dispatchEvent(new CustomEvent(responseType, { detail: JSON.stringify(response) }));
+  };
+  document.addEventListener(requestType, onRequest);
+  return () => {
+    Element.prototype.getBoundingClientRect = original;
+    document.removeEventListener(requestType, onRequest);
+  };
+}

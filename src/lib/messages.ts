@@ -33,6 +33,10 @@ export const MSG = {
   EXTRACT_CONTENT: 'EXTRACT_CONTENT',
   GET_CHUNK: 'GET_CHUNK',
 
+  // WeRead MAIN ↔ isolated content script, via DOM events rather than chrome.runtime.
+  WEREAD_CAPTURE_REQUEST: 'recito:weread:request',
+  WEREAD_CAPTURE_RESPONSE: 'recito:weread:response',
+
   // Provider management (popup/options → SW)
   SYNTHESIZE: 'SYNTHESIZE',
   LIST_VOICES: 'LIST_VOICES',
@@ -64,6 +68,15 @@ export const MSG = {
 } as const;
 
 export type MessageType = (typeof MSG)[keyof typeof MSG];
+
+export interface WereadCaptureRequest {
+  type: typeof MSG.WEREAD_CAPTURE_REQUEST;
+}
+
+export interface WereadCaptureResponse<T> {
+  type: typeof MSG.WEREAD_CAPTURE_RESPONSE;
+  payload: T;
+}
 
 // --- Transport Messages ---
 
