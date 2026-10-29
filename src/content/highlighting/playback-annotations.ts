@@ -38,17 +38,25 @@ export class PlaybackAnnotations {
   getFullText(): string { return this.highlighter.getFullText(); }
 
   highlightProgress(chunk: TextChunk, currentTime: number, duration: number): void {
-    if (!this.destroyed && this.highlighter instanceof WereadHighlighter) {
-      this.highlighter.highlightProgress(chunk, currentTime, duration);
-    }
+    // Unspaced Chinese is one whitespace-delimited "word". Estimate a
+    // character from the audio position for both DOM and WeRead rendering.
+    if (this.destroyed || !/\p{Script=Han}/u.test(chunk.text)
+      || !Number.isFinite(currentTime) || !Number.isFinite(duration) || duration <= 0) return;
+    let offset = Math.min(chunk.text.length - 1,
+      Math.floor(Math.max(0, currentTime / duration) * chunk.text.length));
+    // DOM offsets use UTF-16; keep supplementary characters intact.
+    if (offset > 0 && /[\uDC00-\uDFFF]/.test(chunk.text[offset])) offset--;
+    const length = (chunk.text.codePointAt(offset) ?? 0) > 0xffff ? 2 : 1;
+    this.highlighter.highlightSentence(chunk.startOffset, chunk.endOffset);
+    this.highlighter.highlightWord(chunk.startOffset + offset, chunk.startOffset + offset + length);
   }
 
   highlightWord(chunk: TextChunk, word: string, wordIndex: number): void {
     if (this.destroyed) return;
     const start = findWordPosition(chunk.text, word, wordIndex);
     if (start < 0) return;
-    // WeRead's unspaced Chinese uses audio progress for character highlighting.
-    if (!(this.highlighter instanceof WereadHighlighter && /\p{Script=Han}/u.test(chunk.text))) {
+    // Do not replace the estimated Chinese character with a whole timed span.
+    if (!/\p{Script=Han}/u.test(chunk.text)) {
       this.highlighter.highlightWord(chunk.startOffset + start, chunk.startOffset + start + word.length);
     }
     const sentence = splitSentences(chunk.text).find(item => start >= item.startOffset && start < item.endOffset);

@@ -1,4 +1,4 @@
-import type { ResolvedHighlightSettings, TextChunk } from '@shared/types';
+import type { ResolvedHighlightSettings } from '@shared/types';
 import { scrollToHighlightRect } from '../highlighting/auto-scroll';
 import type { WereadChapter } from './reader';
 
@@ -54,17 +54,6 @@ export class WereadHighlighter {
   }
 
   getFullText(): string { return this.chapter.text; }
-
-  highlightProgress(chunk: TextChunk, currentTime: number, duration: number): void {
-    // Existing whitespace-based word timing treats an unspaced Chinese sentence
-    // as one word. Use the real audio position for approximate character timing.
-    if (!/\p{Script=Han}/u.test(chunk.text) || duration <= 0) return;
-    let offset = Math.min(chunk.text.length - 1, Math.floor(Math.max(0, currentTime / duration) * chunk.text.length));
-    if (offset > 0 && /[\uDC00-\uDFFF]/.test(chunk.text[offset])) offset--;
-    const length = (chunk.text.codePointAt(offset) ?? 0) > 0xffff ? 2 : 1;
-    this.highlightSentence(chunk.startOffset, chunk.endOffset);
-    this.highlightWord(chunk.startOffset + offset, chunk.startOffset + offset + length);
-  }
 
   highlightWord(start: number, end: number): void {
     if (this.invalidated) return;
