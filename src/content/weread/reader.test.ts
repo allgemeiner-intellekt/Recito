@@ -150,7 +150,7 @@ describe('WeRead chapter reading', () => {
     const sentence = document.querySelector<HTMLElement>('.recito-weread-sentence > div')!;
     expect([sentence.style.left, sentence.style.top, sentence.style.width, sentence.style.height]).toEqual(['0px', '0px', '42px', '30px']);
     expect(scroll).toHaveBeenCalledTimes(1);
-    manager.highlightProgress({ index: 0, text: '前文', startOffset: 0, endOffset: 2, wordCount: 1 }, .75, 1);
+    manager.highlightWord(1, 2);
     const word = document.querySelector<HTMLElement>('.recito-weread-word > div')!;
     expect([word.style.left, word.style.width]).toEqual(['21px', '21px']);
     expect(scroll).toHaveBeenCalledTimes(1);

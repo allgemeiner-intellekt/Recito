@@ -16,6 +16,80 @@ afterEach(() => {
 });
 
 describe('playback annotations', () => {
+  function initArticle(html: string, options = settings) {
+    vi.stubGlobal('CSS', { highlights: new Map() });
+    vi.stubGlobal('Highlight', class extends Set<Range> { priority = 0; });
+    document.body.innerHTML = `<article>${html}</article>`;
+    const source = document.querySelector('article')!;
+    const chunks = chunkText(source.textContent!);
+    annotations = new PlaybackAnnotations(source, chunks, options, {
+      isActive: () => true, onSeek: vi.fn(), onInvalidated: vi.fn(),
+    });
+    return chunks;
+  }
+
+  function highlighted(name = 'ir-word') {
+    return [...CSS.highlights.get(name)!].map(range => range.toString());
+  }
+
+  it('advances Chinese characters across inline elements without word timing overriding them', () => {
+    const chunks = initArticle('前文。今天<strong>天气</strong>很好。');
+    const chunk = chunks[1];
+    annotations!.highlightWord(chunk, chunk.text, 0);
+    expect(highlighted()).toEqual([]);
+    const actual: string[] = [];
+    for (const time of [0, 0.2, 0.4, 0.5, 0.7, 0.8, 1]) {
+      annotations!.highlightProgress(chunk, time, 1);
+      annotations!.highlightWord(chunk, chunk.text, 0);
+      actual.push(highlighted()[0]);
+      expect(highlighted('ir-sentence')).toEqual([chunk.text]);
+    }
+    expect(actual).toEqual(['今', '天', '天', '气', '很', '好', '。']);
+  });
+
+  it('uses the supplied audio position after backward seeks and chunk changes', () => {
+    const chunks = initArticle('前文。今天<strong>天气</strong>很好。');
+    annotations!.highlightProgress(chunks[1], 0.8, 1);
+    expect(highlighted()).toEqual(['好']);
+    annotations!.clearAll();
+    expect(highlighted()).toEqual([]);
+    annotations!.highlightProgress(chunks[0], 0, 1);
+    expect(highlighted()).toEqual(['前']);
+    annotations!.highlightProgress(chunks[1], 0.2, 1);
+    expect(highlighted()).toEqual(['天']);
+    annotations!.destroy();
+    annotations!.highlightProgress(chunks[1], 0.8, 1);
+    expect(CSS.highlights.size).toBe(0);
+  });
+
+  it('does not split supplementary characters or run outside the chunk', () => {
+    const [chunk] = initArticle('今天<strong>𠮷</strong>很好。');
+    annotations!.highlightProgress(chunk, 0.5, 1);
+    expect(highlighted()).toEqual(['𠮷']);
+    annotations!.highlightProgress(chunk, -1, 1);
+    expect(highlighted()).toEqual(['今']);
+    annotations!.highlightProgress(chunk, 2, 1);
+    expect(highlighted()).toEqual(['。']);
+  });
+
+  it('ignores unavailable audio timing and preserves English word highlighting', () => {
+    const chunks = initArticle('今天很好。Hello world.');
+    for (const [time, duration] of [[0, 0], [0, -1], [NaN, 1], [1, Infinity]]) {
+      annotations!.highlightProgress(chunks[0], time, duration);
+      expect(highlighted()).toEqual([]);
+    }
+    annotations!.highlightWord(chunks[1], 'world.', 1);
+    annotations!.highlightProgress(chunks[1], 0, 1);
+    expect(highlighted()).toEqual(['world.']);
+  });
+
+  it('keeps sentence highlighting when word highlighting is disabled', () => {
+    const [chunk] = initArticle('今天天气很好。', { ...settings, wordEnabled: false });
+    annotations!.highlightProgress(chunk, 0.5, 1);
+    expect(highlighted()).toEqual([]);
+    expect(highlighted('ir-sentence')).toEqual([chunk.text]);
+  });
+
   it('maps word timing to DOM ranges and releases highlights on stop', () => {
     vi.stubGlobal('CSS', { highlights: new Map() });
     vi.stubGlobal('Highlight', class extends Set<Range> { priority = 0; });
