@@ -22,6 +22,7 @@ import {
 import { initTextScrubber, destroyTextScrubber } from './highlighting/text-scrubber';
 import { extractWeread, isWeread, type WereadChapter } from './weread/reader';
 import { WereadHighlighter } from './weread/highlighter';
+import { WereadScrubber } from './weread/scrubber';
 
 console.log('Recito: content script loaded');
 
@@ -80,6 +81,7 @@ let currentExtraction: ExtractionCacheEntry | null = null;
 // Highlight manager instance
 let highlightManager: HighlightManager | WereadHighlighter | null = null;
 let wereadChapter: WereadChapter | null = null;
+let wereadScrubber: WereadScrubber | null = null;
 
 
 // Mount the floating toolbar into the page
@@ -315,6 +317,8 @@ async function handleMessage(message: ExtensionMessage): Promise<unknown> {
 
     case MSG.STOP: {
       destroyTextScrubber();
+      wereadScrubber?.destroy();
+      wereadScrubber = null;
       highlightManager?.destroy();
       highlightManager = null;
       destroyAutoScroll();
@@ -355,6 +359,8 @@ async function initializePlaybackAnnotations(sourceEl: Element): Promise<void> {
   const settings = await getSettings();
   const resolvedHighlight = resolveHighlightSettings(settings.highlight, settings.themeColor);
   destroyTextScrubber();
+  wereadScrubber?.destroy();
+  wereadScrubber = null;
   destroyAutoScroll();
   highlightManager?.destroy();
   if (wereadChapter) {
@@ -375,6 +381,11 @@ async function initializePlaybackAnnotations(sourceEl: Element): Promise<void> {
     initTextScrubber(highlightManager, currentChunks, (chunkIndex) => {
       useToolbarStore.getState().seekToChunk(chunkIndex);
     });
+  } else if (wereadChapter) {
+    wereadScrubber = new WereadScrubber(wereadChapter, currentChunks, () => {
+      const status = useToolbarStore.getState().playbackStatus;
+      return status === 'playing' || status === 'paused';
+    }, (chunkIndex) => useToolbarStore.getState().seekToChunk(chunkIndex));
   }
 }
 
