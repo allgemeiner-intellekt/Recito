@@ -13,6 +13,7 @@ export class WereadHighlighter {
   private lastScrollLine = -Infinity;
   private originalPosition: string;
   private onResize: () => void;
+  private invalidated = false;
 
   constructor(private chapter: WereadChapter, private settings: ResolvedHighlightSettings, onInvalidated: () => void) {
     this.originalPosition = chapter.root.style.position;
@@ -22,13 +23,31 @@ export class WereadHighlighter {
     Object.assign(this.overlay.style, { position: 'absolute', inset: '0', pointerEvents: 'none', zIndex: '5' });
     this.overlay.append(this.sentence, this.word);
     chapter.root.appendChild(this.overlay);
-    this.observer = new MutationObserver(() => { this.clearAll(); onInvalidated(); });
     const container = chapter.root.querySelector('.wr_canvasContainer');
+    const reader = chapter.root.closest('.readerChapterContent');
+    const title = reader?.querySelector('.chapterTitle');
+    const url = location.href;
+    this.onResize = () => {
+      if (this.invalidated) return;
+      this.invalidated = true;
+      this.observer.disconnect();
+      window.removeEventListener('resize', this.onResize);
+      this.clearAll();
+      onInvalidated();
+    };
+    this.observer = new MutationObserver((records) => {
+      if (!chapter.root.isConnected || location.href !== url
+        || chapter.root.querySelector('.wr_canvasContainer') !== container
+        || reader?.querySelector('.chapterTitle') !== title
+        || records.some(record => container?.contains(record.target) || title?.contains(record.target))) this.onResize();
+    });
     if (container) this.observer.observe(container, { childList: true, subtree: true, attributes: true, attributeFilter: ['width', 'height', 'style'] });
-    const title = document.querySelector('.chapterTitle');
     if (title) this.observer.observe(title, { childList: true, characterData: true, subtree: true });
-    if (chapter.root.parentElement) this.observer.observe(chapter.root.parentElement, { childList: true });
-    this.onResize = () => { this.clearAll(); onInvalidated(); };
+    // Watch each ancestor directly, rather than all document descendants. This
+    // catches reader replacement without reacting to our own overlay updates.
+    for (let ancestor: Element | null = chapter.root; ancestor; ancestor = ancestor.parentElement) {
+      this.observer.observe(ancestor, { childList: true });
+    }
     window.addEventListener('resize', this.onResize);
   }
 
@@ -46,6 +65,7 @@ export class WereadHighlighter {
   }
 
   highlightWord(start: number, end: number): void {
+    if (this.invalidated) return;
     this.scrollToRun(start);
     if (!this.settings.wordEnabled || this.lastWord === `${start}:${end}`) return;
     this.lastWord = `${start}:${end}`;
@@ -53,6 +73,7 @@ export class WereadHighlighter {
   }
 
   highlightSentence(start: number, end: number): void {
+    if (this.invalidated) return;
     if (this.lastSentence === `${start}:${end}`) return;
     this.lastSentence = `${start}:${end}`;
     if (this.settings.sentenceEnabled) this.paint(this.sentence, start, end, this.settings.sentenceColor);

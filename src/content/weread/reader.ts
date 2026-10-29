@@ -28,7 +28,7 @@ export async function extractWeread(): Promise<WereadChapter> {
         const response = JSON.parse(detail) as WereadCaptureResponse<WereadCapture>;
         if (response.type !== MSG.WEREAD_CAPTURE_RESPONSE) return;
         const data = response.payload;
-        if (!Array.isArray(data.runs) || data.runs.length > 50000 || !Number.isFinite(data.width)) return;
+        if (typeof data.url !== 'string' || !Array.isArray(data.runs) || data.runs.length > 50000 || !Number.isFinite(data.width)) return;
         clearTimeout(timeout);
         document.removeEventListener(MSG.WEREAD_CAPTURE_RESPONSE, onResponse);
         resolve(data);
@@ -37,6 +37,7 @@ export async function extractWeread(): Promise<WereadChapter> {
     document.addEventListener(MSG.WEREAD_CAPTURE_RESPONSE, onResponse);
     document.dispatchEvent(new Event(MSG.WEREAD_CAPTURE_REQUEST));
   });
+  if (snapshot.url !== location.href) throw new Error('章节已变化，请等待新章节排版完成后重新朗读。');
   root.dataset.recitoCapture = JSON.stringify({ runs: snapshot.runs.length,
     captureMs: Math.round(snapshot.captureMs * 100) / 100 });
   if (snapshot.truncated) throw new Error('章节超出微信读书原型的文字缓存上限。');

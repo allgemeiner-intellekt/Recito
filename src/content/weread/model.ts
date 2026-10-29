@@ -11,6 +11,7 @@ export interface CapturedRun {
 }
 
 export interface WereadCapture {
+  url: string;
   runs: CapturedRun[];
   width: number;
   captureMs: number;

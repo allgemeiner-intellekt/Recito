@@ -4,8 +4,8 @@ import type { WereadCaptureRequest, WereadCaptureResponse } from '@shared/messag
 /** Prototype: retain the chapter's DOM geometry just before WeRead converts it to Canvas. */
 export function installWereadCapture(): () => void {
   const original = Element.prototype.getBoundingClientRect;
-  const seen = new WeakMap<Element, string>();
-  let snapshot: WereadCapture = { runs: [], width: 0, captureMs: 0, truncated: false };
+  let lastKey = '';
+  let snapshot: WereadCapture = { url: location.href, runs: [], width: 0, captureMs: 0, truncated: false };
   let capturing = false;
   const requestType: WereadCaptureRequest['type'] = 'recito:weread:request';
   const responseType: WereadCaptureResponse<WereadCapture>['type'] = 'recito:weread:response';
@@ -18,8 +18,11 @@ export function installWereadCapture(): () => void {
       capturing = true;
       try {
         const html = this.innerHTML;
-        const key = `${rect.width}:${rect.height}:${html}`;
-        if (seen.get(this) !== key) {
+        const key = `${location.href}:${rect.width}:${rect.height}:${html}`;
+        if (lastKey !== key) {
+          // An empty or failed layout must not leave the previous chapter usable.
+          lastKey = '';
+          snapshot = { url: location.href, runs: [], width: rect.width, captureMs: 0, truncated: false };
           const start = performance.now();
           const runs: CapturedRun[] = [];
           const walker = document.createTreeWalker(this, NodeFilter.SHOW_TEXT);
@@ -48,13 +51,13 @@ export function installWereadCapture(): () => void {
             }
             if (truncated) break;
           }
-          if (runs.length > 0) {
-            snapshot = { runs, width: rect.width, captureMs: performance.now() - start, truncated };
-            seen.set(this, key);
-          }
+          snapshot = { url: location.href, runs, width: rect.width, captureMs: performance.now() - start, truncated };
+          if (runs.length > 0) lastKey = key;
         }
       } catch {
-        // Never interrupt the site's layout if this prototype cannot capture it.
+        lastKey = '';
+        snapshot = { url: location.href, runs: [], width: 0, captureMs: 0, truncated: false };
+        // Never interrupt the site's layout if capture fails.
       } finally {
         capturing = false;
       }
