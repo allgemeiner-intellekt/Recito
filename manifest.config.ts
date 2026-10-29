@@ -17,6 +17,12 @@ export default defineManifest({
   },
   content_scripts: [
     {
+      matches: ['https://weread.qq.com/web/reader/*'],
+      js: ['src/content/weread/capture-entry.ts'],
+      run_at: 'document_start',
+      world: 'MAIN',
+    },
+    {
       matches: ['<all_urls>'],
       js: ['src/content/index.tsx'],
       run_at: 'document_idle',

@@ -73,6 +73,19 @@ src/
 
 4. Run `npm run typecheck` to verify everything compiles
 
+## WeRead browser fixture
+
+Run `npm run dev:weread` and open
+`http://127.0.0.1:5174/scripts/weread-prototype.html` to check capture,
+highlighting, scrolling and sentence seeking in a local browser. Click the run
+button, confirm `correct: true`, and use the sentence buttons or click text in
+both the Canvas region and the DOM tail. This fixture makes no TTS requests and
+does not overwrite the extension's `dist` build.
+
+The fixture uses synthetic layout. Before merging WeRead changes, also verify
+Chinese and English chapters in the live desktop reader, including chapter and
+font/layout changes, dragging, double clicks and forward/backward seeking.
+
 ## Code Style
 
 - TypeScript strict mode is enabled

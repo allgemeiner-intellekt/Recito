@@ -37,8 +37,11 @@ export function initAutoScroll(): void {
  */
 export function scrollToHighlight(range: Range): void {
   if (!enabled || paused) return;
+  scrollToHighlightRect(range.getBoundingClientRect());
+}
 
-  const rect = range.getBoundingClientRect();
+export function scrollToHighlightRect(rect: Pick<DOMRect, 'top' | 'bottom' | 'height' | 'width'>): void {
+  if (!enabled || paused) return;
   if (!rect || (rect.width === 0 && rect.height === 0)) return;
 
   const viewportHeight = window.innerHeight;

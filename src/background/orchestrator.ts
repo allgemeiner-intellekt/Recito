@@ -81,14 +81,29 @@ export async function ensureContentScript(tabId: number): Promise<void> {
   try {
     // Try pinging the content script
     await chrome.tabs.sendMessage(tabId, { type: MSG.GET_PAGE_INFO });
+    return;
   } catch {
-    // Content script not loaded — inject it
-    await chrome.scripting.executeScript({
-      target: { tabId },
-      files: ['src/content/index.tsx'],
-    });
-    // Wait briefly for it to initialize
-    await new Promise((r) => setTimeout(r, 300));
+    // The page may have been opened before the extension was installed/reloaded.
+  }
+
+  // CRXJS rewrites this entry to a built JS loader. The first entry can be
+  // WeRead's MAIN-world capture script, which is not the message receiver.
+  const files = chrome.runtime.getManifest().content_scripts?.find((script) =>
+    (!('world' in script) || script.world !== 'MAIN') && script.matches?.includes('<all_urls>') && script.js?.length,
+  )?.js;
+  if (!files?.length) throw new Error('No generic content script entry found in the extension manifest.');
+  await chrome.scripting.executeScript({ target: { tabId }, files });
+
+  // executeScript completes before the loader's dynamic import necessarily
+  // finishes. Wait for the actual message receiver, not a fixed startup delay.
+  for (let attempt = 0; attempt < 20; attempt++) {
+    try {
+      await chrome.tabs.sendMessage(tabId, { type: MSG.GET_PAGE_INFO });
+      return;
+    } catch (error) {
+      if (attempt === 19) throw new Error('Content script did not initialize after injection.', { cause: error });
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
   }
 }
 
