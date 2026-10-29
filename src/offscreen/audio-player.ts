@@ -1,6 +1,13 @@
 import { MSG } from '@shared/messages';
 import { PROGRESS_REPORT_INTERVAL_MS } from '@shared/constants';
 
+interface QueuedChunk {
+  buffer: AudioBuffer;
+  index: number;
+  source: AudioBufferSourceNode | null;
+  startAt: number;
+}
+
 export class AudioPlayer {
   private ctx: AudioContext | null = null;
   private gainNode: GainNode | null = null;
@@ -11,18 +18,17 @@ export class AudioPlayer {
   private pauseOffset = 0;
   private isPlaying = false;
   private currentChunkIndex = -1;
-  private playbackRate = 1.0;
-  private prefetchedBuffers = new Map<number, AudioBuffer>();
-
-  // Gapless scheduling: next chunk pre-scheduled to start when current ends
-  private nextSourceNode: AudioBufferSourceNode | null = null;
-  private nextBuffer: AudioBuffer | null = null;
-  private nextChunkIndex = -1;
+  private playbackRate = 1;
+  private volume = 1;
+  private next: QueuedChunk | null = null;
+  private playbackVersion = 0;
+  private queueVersion = 0;
 
   private getContext(): AudioContext {
     if (!this.ctx) {
       this.ctx = new AudioContext({ latencyHint: 'interactive' });
       this.gainNode = this.ctx.createGain();
+      this.gainNode.gain.value = this.volume;
       this.gainNode.connect(this.ctx.destination);
     }
     return this.ctx;
@@ -30,246 +36,144 @@ export class AudioPlayer {
 
   async play(audioData: ArrayBuffer, chunkIndex: number, _format: string): Promise<void> {
     this.stop();
-    this.currentChunkIndex = chunkIndex;
-
+    const version = this.playbackVersion;
     const ctx = this.getContext();
-    if (ctx.state === 'suspended') {
-      await ctx.resume();
-    }
+    if (ctx.state === 'suspended') await ctx.resume();
+    if (version !== this.playbackVersion) return;
 
-    let buffer: AudioBuffer;
-
-    // Check prefetch cache
-    const cached = this.prefetchedBuffers.get(chunkIndex);
-    if (cached) {
-      buffer = cached;
-      this.prefetchedBuffers.delete(chunkIndex);
-    } else {
-      buffer = await ctx.decodeAudioData(audioData.slice(0));
-    }
-
+    const buffer = await ctx.decodeAudioData(audioData.slice(0));
+    if (version !== this.playbackVersion) return;
     this.currentBuffer = buffer;
-    this.pauseOffset = 0;
+    this.currentChunkIndex = chunkIndex;
     this.startPlayback();
   }
 
-  /**
-   * Schedule the next chunk to start exactly when the current one ends (gapless).
-   * If nothing is playing, falls back to regular play().
-   */
-  async scheduleNext(audioData: ArrayBuffer, chunkIndex: number, _format: string): Promise<void> {
-    const ctx = this.getContext();
-
-    if (!this.isPlaying || !this.currentBuffer) {
-      // Nothing playing — just play directly
-      await this.play(audioData, chunkIndex, _format);
+  /** Start the next chunk at the current chunk's audio-clock boundary. */
+  async scheduleNext(audioData: ArrayBuffer, chunkIndex: number, format: string): Promise<void> {
+    if (!this.currentBuffer) {
+      await this.play(audioData, chunkIndex, format);
       return;
     }
 
-    // Cancel any previously scheduled next
-    if (this.nextSourceNode) {
-      try { this.nextSourceNode.stop(); } catch { /* already stopped */ }
-      this.nextSourceNode.disconnect();
-      this.nextSourceNode = null;
+    const version = ++this.queueVersion;
+    this.stopSource(this.next?.source ?? null);
+    this.next = null;
+    const buffer = await this.getContext().decodeAudioData(audioData.slice(0));
+    if (version !== this.queueVersion) return;
+
+    // A paused chunk has no source; an ended chunk retains its source until
+    // replacement. Late decoding should start only after natural completion.
+    if (!this.isPlaying && this.sourceNode) {
+      this.currentBuffer = buffer;
+      this.currentChunkIndex = chunkIndex;
+      this.pauseOffset = 0;
+      this.startPlayback();
+      return;
     }
 
-    // Decode the next buffer
-    let buffer: AudioBuffer;
-    const cached = this.prefetchedBuffers.get(chunkIndex);
-    if (cached) {
-      buffer = cached;
-      this.prefetchedBuffers.delete(chunkIndex);
-    } else {
-      buffer = await ctx.decodeAudioData(audioData.slice(0));
-    }
-
-    this.nextBuffer = buffer;
-    this.nextChunkIndex = chunkIndex;
-
-    // Schedule to start at the exact moment current source ends
-    const elapsed = ctx.currentTime - this.startTime;
-    const currentDuration = (this.currentBuffer.duration - this.pauseOffset) / this.playbackRate;
-    const remaining = currentDuration - elapsed;
-    const startAt = ctx.currentTime + Math.max(0, remaining);
-
-    this.nextSourceNode = ctx.createBufferSource();
-    this.nextSourceNode.buffer = buffer;
-    this.nextSourceNode.playbackRate.value = this.playbackRate;
-    this.nextSourceNode.connect(this.gainNode!);
-    this.nextSourceNode.start(startAt);
-
-    // When the next source ends naturally, signal chunk complete
-    this.nextSourceNode.onended = () => {
-      // Only fire if this node is still the "current" one (wasn't cancelled)
-      if (this.sourceNode === this.nextSourceNode || this.currentChunkIndex === this.nextChunkIndex) {
-        // Will be handled by the promoted source's onended in startPlayback
-      }
-    };
+    this.next = { buffer, index: chunkIndex, source: null, startAt: 0 };
+    this.scheduleQueuedChunk();
   }
 
-  async prefetch(audioData: ArrayBuffer, chunkIndex: number, _format: string): Promise<void> {
-    const ctx = this.getContext();
-    try {
-      const buffer = await ctx.decodeAudioData(audioData.slice(0));
-      this.prefetchedBuffers.set(chunkIndex, buffer);
-      // Keep only a few prefetched buffers
-      if (this.prefetchedBuffers.size > 3) {
-        const oldest = this.prefetchedBuffers.keys().next().value;
-        if (oldest !== undefined) {
-          this.prefetchedBuffers.delete(oldest);
-        }
-      }
-    } catch (err) {
-      console.warn('Prefetch decode failed:', err);
-    }
+  private createSource(buffer: AudioBuffer): AudioBufferSourceNode {
+    const source = this.ctx!.createBufferSource();
+    source.buffer = buffer;
+    source.playbackRate.value = this.playbackRate;
+    source.connect(this.gainNode!);
+    source.onended = () => this.completeChunk(source);
+    return source;
   }
 
   private startPlayback(): void {
-    if (!this.currentBuffer || !this.ctx || !this.gainNode) return;
-
-    const completingChunkIndex = this.currentChunkIndex;
-
-    this.sourceNode = this.ctx.createBufferSource();
-    this.sourceNode.buffer = this.currentBuffer;
-    this.sourceNode.playbackRate.value = this.playbackRate;
-    this.sourceNode.connect(this.gainNode);
-
-    this.sourceNode.onended = () => {
-      if (this.isPlaying) {
-        this.stopProgressReporting();
-
-        if (this.nextSourceNode && this.nextBuffer) {
-          // Promote next to current (gapless transition)
-          this.sourceNode = this.nextSourceNode;
-          this.currentBuffer = this.nextBuffer;
-          this.currentChunkIndex = this.nextChunkIndex;
-          this.startTime = this.ctx!.currentTime;
-          this.pauseOffset = 0;
-          this.nextSourceNode = null;
-          this.nextBuffer = null;
-          this.nextChunkIndex = -1;
-
-          // Re-attach onended for the promoted source
-          const promotedChunkIndex = this.currentChunkIndex;
-          this.sourceNode.onended = () => {
-            if (this.isPlaying) {
-              this.isPlaying = false;
-              this.stopProgressReporting();
-              this.sendMessage({
-                type: MSG.CHUNK_COMPLETE,
-                chunkIndex: promotedChunkIndex,
-              });
-            }
-          };
-
-          this.startProgressReporting();
-
-          // Signal the old chunk complete
-          this.sendMessage({
-            type: MSG.CHUNK_COMPLETE,
-            chunkIndex: completingChunkIndex,
-          });
-        } else {
-          // No next buffer queued — just complete
-          this.isPlaying = false;
-          this.sendMessage({
-            type: MSG.CHUNK_COMPLETE,
-            chunkIndex: completingChunkIndex,
-          });
-        }
-      }
-    };
-
+    this.sourceNode = this.createSource(this.currentBuffer!);
+    this.startTime = this.ctx!.currentTime;
     this.sourceNode.start(0, this.pauseOffset);
-    this.startTime = this.playbackRate > 0
-      ? this.ctx.currentTime - (this.pauseOffset / this.playbackRate)
-      : this.ctx.currentTime;
     this.isPlaying = true;
+    this.scheduleQueuedChunk();
     this.startProgressReporting();
   }
 
+  private scheduleQueuedChunk(): void {
+    if (!this.next || !this.isPlaying) return;
+    this.stopSource(this.next.source);
+    const remaining = (this.currentBuffer!.duration - this.getCurrentTime()) / this.playbackRate;
+    this.next.startAt = this.ctx!.currentTime + Math.max(0, remaining);
+    this.next.source = this.createSource(this.next.buffer);
+    this.next.source.start(this.next.startAt);
+  }
+
+  private completeChunk(source: AudioBufferSourceNode): void {
+    if (source !== this.sourceNode || !this.isPlaying) return;
+    const chunkIndex = this.currentChunkIndex;
+    source.disconnect();
+    if (this.next?.source) {
+      this.sourceNode = this.next.source;
+      this.currentBuffer = this.next.buffer;
+      this.currentChunkIndex = this.next.index;
+      this.startTime = this.next.startAt;
+      this.pauseOffset = 0;
+      this.next = null;
+    } else {
+      this.isPlaying = false;
+      this.stopProgressReporting();
+    }
+    this.sendMessage({ type: MSG.CHUNK_COMPLETE, chunkIndex });
+  }
+
+  private stopSource(source: AudioBufferSourceNode | null): void {
+    if (!source) return;
+    source.onended = null;
+    source.stop();
+    source.disconnect();
+  }
+
   pause(): void {
-    if (!this.isPlaying || !this.ctx || !this.sourceNode) return;
-    this.pauseOffset = (this.ctx.currentTime - this.startTime) * this.playbackRate;
+    if (!this.isPlaying) return;
+    this.pauseOffset = this.getCurrentTime();
     this.isPlaying = false;
-    try {
-      this.sourceNode.onended = null;
-      this.sourceNode.stop();
-    } catch {
-      // already stopped
-    }
-    this.sourceNode.disconnect();
+    this.stopSource(this.sourceNode);
     this.sourceNode = null;
-
-    // Cancel pre-scheduled next source (keep nextBuffer for re-scheduling on resume)
-    if (this.nextSourceNode) {
-      try {
-        this.nextSourceNode.onended = null;
-        this.nextSourceNode.stop();
-      } catch { /* already stopped */ }
-      this.nextSourceNode.disconnect();
-      this.nextSourceNode = null;
-    }
-
+    this.stopSource(this.next?.source ?? null);
+    if (this.next) this.next.source = null;
     this.stopProgressReporting();
   }
 
   resume(): void {
-    if (this.isPlaying || !this.currentBuffer) return;
-    this.startPlayback();
+    if (!this.isPlaying && this.currentBuffer) this.startPlayback();
   }
 
   stop(): void {
+    this.playbackVersion++;
+    this.queueVersion++;
     this.isPlaying = false;
     this.stopProgressReporting();
-    if (this.sourceNode) {
-      try {
-        this.sourceNode.onended = null;
-        this.sourceNode.stop();
-      } catch {
-        // already stopped
-      }
-      this.sourceNode.disconnect();
-      this.sourceNode = null;
-    }
-    if (this.nextSourceNode) {
-      try {
-        this.nextSourceNode.onended = null;
-        this.nextSourceNode.stop();
-      } catch { /* already stopped */ }
-      this.nextSourceNode.disconnect();
-      this.nextSourceNode = null;
-    }
+    this.stopSource(this.sourceNode);
+    this.stopSource(this.next?.source ?? null);
+    this.sourceNode = null;
     this.currentBuffer = null;
-    this.nextBuffer = null;
-    this.nextChunkIndex = -1;
+    this.next = null;
     this.pauseOffset = 0;
     this.currentChunkIndex = -1;
   }
 
   setSpeed(rate: number): void {
-    if (this.isPlaying && this.ctx && this.playbackRate > 0 && rate > 0) {
-      const currentTimeInAudio = (this.ctx.currentTime - this.startTime) * this.playbackRate;
-      this.startTime = this.ctx.currentTime - (currentTimeInAudio / rate);
-    }
+    this.pauseOffset = this.getCurrentTime();
+    if (this.ctx) this.startTime = this.ctx.currentTime;
     this.playbackRate = rate;
     if (this.sourceNode && this.isPlaying) {
       this.sourceNode.playbackRate.value = rate;
-    }
-    if (this.nextSourceNode) {
-      this.nextSourceNode.playbackRate.value = rate;
+      this.scheduleQueuedChunk();
     }
   }
 
   setVolume(level: number): void {
-    if (this.gainNode) {
-      this.gainNode.gain.value = Math.max(0, Math.min(1, level));
-    }
+    this.volume = Math.max(0, Math.min(1, level));
+    if (this.gainNode) this.gainNode.gain.value = this.volume;
   }
 
   getCurrentTime(): number {
     if (!this.ctx || !this.isPlaying) return this.pauseOffset;
-    return (this.ctx.currentTime - this.startTime) * this.playbackRate;
+    return this.pauseOffset + (this.ctx.currentTime - this.startTime) * this.playbackRate;
   }
 
   getDuration(): number {
@@ -289,7 +193,7 @@ export class AudioPlayer {
   }
 
   private stopProgressReporting(): void {
-    if (this.progressInterval) {
+    if (this.progressInterval !== null) {
       clearInterval(this.progressInterval);
       this.progressInterval = null;
     }
