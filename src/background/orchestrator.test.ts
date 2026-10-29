@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MSG, sendTabMessage } from '@shared/messages';
 
 // ── Mocks ───────────────────────────────────────────────────────────────
@@ -108,6 +108,7 @@ vi.mock('@shared/constants', () => ({
 const mockTabsSendMessage = vi.fn().mockResolvedValue(undefined);
 const mockRuntimeSendMessage = vi.fn().mockResolvedValue(undefined);
 const mockScriptingExecuteScript = vi.fn().mockResolvedValue(undefined);
+const mockGetManifest = vi.fn();
 const mockRuntimeOnMessage = {
   addListener: vi.fn(),
   removeListener: vi.fn(),
@@ -118,6 +119,7 @@ vi.stubGlobal('chrome', {
     sendMessage: mockTabsSendMessage,
   },
   runtime: {
+    getManifest: mockGetManifest,
     sendMessage: mockRuntimeSendMessage,
     onMessage: mockRuntimeOnMessage,
   },
@@ -127,7 +129,7 @@ vi.stubGlobal('chrome', {
 });
 
 // ── Import after mocks ──────────────────────────────────────────────────
-import { stopPlayback, startPlayback, pausePlayback, resumePlayback, setSpeed, setVolume, getActiveTab, skipToChunk } from './orchestrator';
+import { stopPlayback, startPlayback, pausePlayback, resumePlayback, setSpeed, setVolume, getActiveTab, skipToChunk, ensureContentScript } from './orchestrator';
 import { playbackState } from './playback-state';
 import { stopWordTimingRelay } from './word-timing';
 import { getActiveProvider, getSettings, saveProgress } from '@shared/storage';
@@ -143,6 +145,67 @@ describe('orchestrator', () => {
     vi.clearAllMocks();
     // Ensure playback is stopped before each test
     stopPlayback();
+  });
+
+  describe('ensureContentScript', () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+      mockTabsSendMessage.mockReset().mockResolvedValue({ wordCount: 1 });
+      mockGetManifest.mockReturnValue({ content_scripts: [
+        { world: 'MAIN', matches: ['https://weread.qq.com/web/reader/*'], js: ['assets/weread-capture.js'] },
+        { matches: ['<all_urls>'], js: ['assets/index.tsx-loader-buildhash.js'] },
+      ] });
+    });
+    afterEach(() => {
+      mockTabsSendMessage.mockReset().mockResolvedValue(undefined);
+      vi.useRealTimers();
+    });
+
+    it('does not reinject a responding content script', async () => {
+      await ensureContentScript(7);
+      expect(mockScriptingExecuteScript).not.toHaveBeenCalled();
+      expect(mockGetManifest).not.toHaveBeenCalled();
+    });
+
+    it('injects the built generic loader from the runtime manifest, not TSX or the MAIN-world capture script', async () => {
+      mockTabsSendMessage.mockRejectedValueOnce(new Error('No receiver'));
+      const ready = ensureContentScript(7);
+      await vi.runAllTimersAsync();
+      await ready;
+      expect(mockScriptingExecuteScript).toHaveBeenCalledWith({
+        target: { tabId: 7 }, files: ['assets/index.tsx-loader-buildhash.js'],
+      });
+      expect(mockTabsSendMessage).toHaveBeenCalledTimes(2);
+    });
+
+    it('waits for the loader asynchronous import to register the message listener', async () => {
+      mockTabsSendMessage.mockRejectedValueOnce(new Error('No receiver')).mockRejectedValueOnce(new Error('Still loading'));
+      const ready = ensureContentScript(7);
+      await vi.runAllTimersAsync();
+      await ready;
+      expect(mockTabsSendMessage).toHaveBeenCalledTimes(3);
+      expect(mockScriptingExecuteScript).toHaveBeenCalledTimes(1);
+    });
+
+    it('fails clearly without injecting a different-world script when no generic entry exists', async () => {
+      mockTabsSendMessage.mockRejectedValueOnce(new Error('No receiver'));
+      mockGetManifest.mockReturnValue({ content_scripts: [
+        { world: 'MAIN', matches: ['<all_urls>'], js: ['assets/weread-capture.js'] },
+      ] });
+      const result = ensureContentScript(7).catch(error => error);
+      await vi.runAllTimersAsync();
+      expect(await result).toBeInstanceOf(Error);
+      expect(mockScriptingExecuteScript).not.toHaveBeenCalled();
+    });
+
+    it('fails after a bounded readiness wait instead of reporting a broken loader as ready', async () => {
+      mockTabsSendMessage.mockRejectedValue(new Error('No receiver'));
+      const result = ensureContentScript(7).catch(error => error);
+      await vi.runAllTimersAsync();
+      expect(await result).toMatchObject({ message: 'Content script did not initialize after injection.' });
+      expect(mockTabsSendMessage).toHaveBeenCalledTimes(21);
+      expect(mockScriptingExecuteScript).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe('stopPlayback', () => {

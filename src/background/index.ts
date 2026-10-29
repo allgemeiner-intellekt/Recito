@@ -22,6 +22,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 chrome.runtime.onInstalled.addListener((details) => {
   console.log('Recito installed', details.reason);
+  initializeSettingsMenu();
   if (details.reason === 'install') {
     chrome.tabs.create({ url: chrome.runtime.getURL('src/onboarding/index.html') });
   }
@@ -141,12 +142,21 @@ chrome.action.onClicked.addListener(async (tab) => {
   }
 });
 
-// Right-click context menu on extension icon → open settings
-chrome.contextMenus.create({
-  id: 'ir-settings',
-  title: 'Recito Settings',
-  contexts: ['action'],
-});
+// Menus persist across service worker restarts. Rebuild only on installation
+// and updates, clearing the previous registration before reusing its ID.
+function initializeSettingsMenu(): void {
+  chrome.contextMenus.removeAll(() => {
+    const resetError = chrome.runtime.lastError;
+    if (resetError) {
+      console.error('[Recito] Could not reset settings menu:', resetError.message);
+      return;
+    }
+    chrome.contextMenus.create({ id: 'ir-settings', title: 'Recito Settings', contexts: ['action'] }, () => {
+      const createError = chrome.runtime.lastError;
+      if (createError) console.error('[Recito] Could not create settings menu:', createError.message);
+    });
+  });
+}
 
 chrome.contextMenus.onClicked.addListener((info) => {
   if (info.menuItemId === 'ir-settings') {
