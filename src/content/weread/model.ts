@@ -1,4 +1,4 @@
-/** Prototype: chapter geometry captured during WeRead's DOM layout, in CSS pixels. */
+/** Chapter geometry captured during WeRead's DOM layout, in CSS pixels. */
 export interface CapturedRun {
   text: string;
   x: number;

@@ -31,7 +31,7 @@ beforeEach(() => {
   const text = '前句。后句跨行。末句。';
   const runs = [...text].map((character, i) => ({ text: character, x: (i < 6 ? i : i - 6) * 21,
     y: i < 6 ? 0 : 40, width: 21, height: 30, baseline: i < 6 ? 15 : 55, startOffset: i, endOffset: i + 1 }));
-  const chapter: WereadChapter = { text, runs, root, canvases: [canvas], title: '本章' };
+  const chapter: WereadChapter = { text, runs, root, title: '本章' };
   scrubber = new WereadScrubber(chapter, chunkText(text), () => active, seek);
 });
 afterEach(() => { scrubber.destroy(); window.getSelection()?.removeAllRanges(); vi.useRealTimers(); });

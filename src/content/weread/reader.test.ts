@@ -2,7 +2,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { installWereadCapture } from './capture';
 import { extractWeread } from './reader';
-import { assembleChapter } from './model';
 import { WereadHighlighter } from './highlighter';
 import { initAutoScroll, destroyAutoScroll } from '../highlighting/auto-scroll';
 
@@ -43,7 +42,7 @@ afterEach(() => {
 
 function capture() { document.querySelector('#preRenderContainer')!.getBoundingClientRect(); }
 
-describe('WeRead prototype', () => {
+describe('WeRead chapter reading', () => {
   it('retains the entire chapter before its temporary DOM is removed, including the virtualized tail', async () => {
     capture();
     document.querySelector('#preRenderContainer')!.remove();
@@ -58,9 +57,13 @@ describe('WeRead prototype', () => {
     capture(); capture();
     document.querySelector('.chapterTitle')!.getBoundingClientRect();
     expect(rangeRect).toHaveBeenCalledTimes(4);
-    document.querySelector('#preRenderContainer p')!.textContent = '新文';
+    const temporary = document.querySelector('#preRenderContainer')!;
+    temporary.replaceWith(temporary.cloneNode(true));
     capture();
     expect(rangeRect).toHaveBeenCalledTimes(8);
+    document.querySelector('#preRenderContainer p')!.textContent = '新文';
+    capture();
+    expect(rangeRect).toHaveBeenCalledTimes(12);
     expect((await extractWeread()).text.replace(/\s/g, '')).toBe('新文后段');
   });
 
@@ -135,13 +138,6 @@ describe('WeRead prototype', () => {
     expect(chapter.runs.find(run => run.text === 'h')).toMatchObject({ spaceBefore: true });
   });
 
-  it('sorts mixed language by geometry and preserves sentence offsets', () => {
-    const run = (text: string, x: number, baseline: number) => ({ text, x, y: baseline - 10, baseline, width: 20, height: 20 });
-    const chapter = assembleChapter([run('。', 20, 40), run('好', 0, 40), run('world', 80, 0), run('Hello', 0, 0)]);
-    expect(chapter.text).toBe('Hello world好。');
-    for (const item of chapter.runs) expect(chapter.text.slice(item.startOffset, item.endOffset)).toBe(item.text);
-  });
-
   it('paints the active sentence/character, scrolls once per line, and releases the observer', async () => {
     capture();
     const chapter = await extractWeread();
@@ -151,10 +147,12 @@ describe('WeRead prototype', () => {
     manager = new WereadHighlighter(chapter, { wordEnabled: true, sentenceEnabled: true, autoScroll: true,
       wordColor: 'rgba(255,255,0,.3)', sentenceColor: 'rgba(255,255,0,.1)' }, invalidated);
     manager.highlightSentence(0, 2); manager.highlightSentence(0, 2);
-    expect(document.querySelector('.recito-weread-highlights')!.querySelectorAll('div').length).toBe(3);
+    const sentence = document.querySelector<HTMLElement>('.recito-weread-sentence > div')!;
+    expect([sentence.style.left, sentence.style.top, sentence.style.width, sentence.style.height]).toEqual(['0px', '0px', '42px', '30px']);
     expect(scroll).toHaveBeenCalledTimes(1);
     manager.highlightProgress({ index: 0, text: '前文', startOffset: 0, endOffset: 2, wordCount: 1 }, .75, 1);
-    expect(document.querySelector<HTMLElement>('.recito-weread-highlights > div:last-child > div')!.style.left).toBe('21px');
+    const word = document.querySelector<HTMLElement>('.recito-weread-word > div')!;
+    expect([word.style.left, word.style.width]).toEqual(['21px', '21px']);
     expect(scroll).toHaveBeenCalledTimes(1);
     document.body.appendChild(document.createElement('aside'));
     await Promise.resolve();

@@ -1,7 +1,6 @@
 import { MSG, type ExtensionMessage } from '@shared/messages';
 import type { TextChunk } from '@shared/types';
 import { extractContent } from './extraction/extractor';
-import { splitSentences } from './extraction/sentence-splitter';
 import { getSelectedText } from './extraction/selection';
 import {
   canReuseExtraction,
@@ -14,15 +13,8 @@ import { mountToolbar } from './mount';
 import { useToolbarStore } from './state/store';
 import { getSettings } from '@shared/storage';
 import { resolveHighlightSettings } from '@shared/accent-colors';
-import { HighlightManager } from './highlighting/highlight-manager';
-import {
-  initAutoScroll,
-  destroyAutoScroll,
-} from './highlighting/auto-scroll';
-import { initTextScrubber, destroyTextScrubber } from './highlighting/text-scrubber';
+import { PlaybackAnnotations } from './highlighting/playback-annotations';
 import { extractWeread, isWeread, type WereadChapter } from './weread/reader';
-import { WereadHighlighter } from './weread/highlighter';
-import { WereadScrubber } from './weread/scrubber';
 
 console.log('Recito: content script loaded');
 
@@ -78,11 +70,7 @@ let currentChunks: TextChunk[] = [];
 let currentTitle = '';
 let currentExtraction: ExtractionCacheEntry | null = null;
 
-// Highlight manager instance
-let highlightManager: HighlightManager | WereadHighlighter | null = null;
-let wereadChapter: WereadChapter | null = null;
-let wereadScrubber: WereadScrubber | null = null;
-
+let annotations: PlaybackAnnotations | null = null;
 
 // Mount the floating toolbar into the page
 mountToolbar();
@@ -127,9 +115,9 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
   if (areaName !== 'local' || !changes['ir-settings']) return;
   try {
     const newSettings = changes['ir-settings'].newValue;
-    if (newSettings?.highlight && highlightManager) {
+    if (newSettings?.highlight && annotations) {
       const resolved = resolveHighlightSettings(newSettings.highlight, newSettings.themeColor ?? null);
-      highlightManager.updateColors(resolved);
+      annotations.updateColors(resolved);
     }
   } catch (err) {
     console.error('[content] Failed to update highlight settings:', err);
@@ -158,7 +146,7 @@ async function handleMessage(message: ExtensionMessage): Promise<unknown> {
         store._setTotalChunks(currentChunks.length);
         store.showToolbar();
 
-        if (!highlightManager) {
+        if (!annotations) {
           await initializePlaybackAnnotations(
             (currentExtraction.sourceElement as Element | null) ?? document.body,
           );
@@ -176,7 +164,7 @@ async function handleMessage(message: ExtensionMessage): Promise<unknown> {
       let title: string;
       let wordCount: number;
       let sourceEl: Element | null = null;
-      wereadChapter = null;
+      let wereadChapter: WereadChapter | null = null;
 
       if (isWeread()) {
         wereadChapter = await extractWeread();
@@ -212,12 +200,12 @@ async function handleMessage(message: ExtensionMessage): Promise<unknown> {
       store._setTotalChunks(currentChunks.length);
       store.showToolbar();
 
-      await initializePlaybackAnnotations(sourceEl ?? document.body);
+      await initializePlaybackAnnotations(wereadChapter ?? sourceEl ?? document.body);
 
       // Recompute chunk offsets against the DOM text map so highlighting
       // aligns with actual text node positions (Readability's textContent
       // may differ from the live DOM, causing partial-word highlights).
-      const domText = highlightManager?.getFullText() ?? '';
+      const domText = annotations?.getFullText() ?? '';
       if (domText) {
         recomputeChunkOffsets(currentChunks, domText);
       }
@@ -251,10 +239,8 @@ async function handleMessage(message: ExtensionMessage): Promise<unknown> {
         message.duration > 0 ? message.currentTime / message.duration : 0;
       store._setChunkProgress(progress, message.currentTime);
       store._setCurrentChunk(message.chunkIndex);
-      if (highlightManager instanceof WereadHighlighter) {
-        const chunk = currentChunks[message.chunkIndex];
-        if (chunk) highlightManager.highlightProgress(chunk, message.currentTime, message.duration);
-      }
+      const chunk = currentChunks[message.chunkIndex];
+      if (chunk) annotations?.highlightProgress(chunk, message.currentTime, message.duration);
       // If playback was started outside the content toolbar, the local store
       // may not have seen the loading state before progress starts arriving.
       if (store.playbackStatus === 'loading' || store.playbackStatus === 'idle') {
@@ -273,33 +259,13 @@ async function handleMessage(message: ExtensionMessage): Promise<unknown> {
       store._setCurrentChunk(message.chunkIndex + 1);
       store._setChunkProgress(0);
       // Clear highlights for completed chunk
-      highlightManager?.clearAll();
+      annotations?.clearAll();
       return { ok: true };
     }
 
     case MSG.WORD_TIMING: {
-      if (highlightManager) {
-        const chunk = currentChunks[message.chunkIndex];
-        if (chunk) {
-          // Calculate absolute character positions from chunk offset + word position
-          const chunkText = chunk.text;
-          const wordStart = findWordPosition(chunkText, message.word, message.wordIndex);
-          if (wordStart >= 0) {
-            const absStart = chunk.startOffset + wordStart;
-            const absEnd = absStart + message.word.length;
-            if (!(highlightManager instanceof WereadHighlighter && /\p{Script=Han}/u.test(chunkText))) {
-              highlightManager.highlightWord(absStart, absEnd);
-            }
-
-            // Also highlight the sentence containing this word
-            const sentenceBounds = findSentenceBounds(chunkText, wordStart);
-            const absSentenceStart = chunk.startOffset + sentenceBounds.start;
-            const absSentenceEnd = chunk.startOffset + sentenceBounds.end;
-            highlightManager.highlightSentence(absSentenceStart, absSentenceEnd);
-
-          }
-        }
-      }
+      const chunk = currentChunks[message.chunkIndex];
+      if (chunk) annotations?.highlightWord(chunk, message.word, message.wordIndex);
       return { ok: true };
     }
 
@@ -316,12 +282,7 @@ async function handleMessage(message: ExtensionMessage): Promise<unknown> {
     }
 
     case MSG.STOP: {
-      destroyTextScrubber();
-      wereadScrubber?.destroy();
-      wereadScrubber = null;
-      highlightManager?.destroy();
-      highlightManager = null;
-      destroyAutoScroll();
+      destroyPlaybackAnnotations();
       cleanupNativeMediaDetection();
       store._setPlaybackStatus('idle');
       return { ok: true };
@@ -355,38 +316,27 @@ async function handleMessage(message: ExtensionMessage): Promise<unknown> {
   }
 }
 
-async function initializePlaybackAnnotations(sourceEl: Element): Promise<void> {
+function destroyPlaybackAnnotations(): void {
+  annotations?.destroy();
+  annotations = null;
+}
+
+async function initializePlaybackAnnotations(source: Element | WereadChapter): Promise<void> {
   const settings = await getSettings();
   const resolvedHighlight = resolveHighlightSettings(settings.highlight, settings.themeColor);
-  destroyTextScrubber();
-  wereadScrubber?.destroy();
-  wereadScrubber = null;
-  destroyAutoScroll();
-  highlightManager?.destroy();
-  if (wereadChapter) {
-    highlightManager = new WereadHighlighter(wereadChapter, resolvedHighlight, () => {
-      useToolbarStore.getState().stop();
-      useToolbarStore.getState()._showToast('章节或排版已变化，请重新启动朗读。');
-    });
-  } else {
-    highlightManager = new HighlightManager(resolvedHighlight);
-    highlightManager.init(sourceEl);
-  }
-
-  if (settings.highlight.autoScroll) {
-    initAutoScroll();
-  }
-
-  if (highlightManager instanceof HighlightManager) {
-    initTextScrubber(highlightManager, currentChunks, (chunkIndex) => {
-      useToolbarStore.getState().seekToChunk(chunkIndex);
-    });
-  } else if (wereadChapter) {
-    wereadScrubber = new WereadScrubber(wereadChapter, currentChunks, () => {
+  destroyPlaybackAnnotations();
+  annotations = new PlaybackAnnotations(source, currentChunks, resolvedHighlight, {
+    isActive: () => {
       const status = useToolbarStore.getState().playbackStatus;
       return status === 'playing' || status === 'paused';
-    }, (chunkIndex) => useToolbarStore.getState().seekToChunk(chunkIndex));
-  }
+    },
+    onSeek: (chunkIndex) => useToolbarStore.getState().seekToChunk(chunkIndex),
+    onInvalidated: () => {
+      annotations = null;
+      useToolbarStore.getState().stop();
+      useToolbarStore.getState()._showToast('章节或排版已变化，请重新启动朗读。');
+    },
+  });
 }
 
 /**
@@ -435,40 +385,4 @@ function recomputeChunkOffsets(chunks: TextChunk[], domText: string): void {
 
 function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-/**
- * Find the character position of the nth occurrence of `word` in `text`,
- * using wordIndex as a sequential word counter.
- */
-function findWordPosition(text: string, word: string, wordIndex: number): number {
-  // Split the text into words and track positions
-  const regex = /\S+/g;
-  let match: RegExpExecArray | null;
-  let idx = 0;
-  while ((match = regex.exec(text)) !== null) {
-    if (idx === wordIndex) {
-      // Verify the word matches (it may have punctuation attached)
-      return match.index;
-    }
-    idx++;
-  }
-  // Fallback: search for the word directly
-  return text.indexOf(word);
-}
-
-/**
- * Find the sentence boundaries (start, end) within `text` that contain `charPos`.
- */
-function findSentenceBounds(
-  text: string,
-  charPos: number,
-): { start: number; end: number } {
-  const sentences = splitSentences(text);
-  for (const s of sentences) {
-    if (charPos >= s.startOffset && charPos < s.endOffset) {
-      return { start: s.startOffset, end: s.endOffset };
-    }
-  }
-  return { start: 0, end: text.length };
 }

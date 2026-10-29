@@ -16,7 +16,14 @@ function positionedLines(lines: string[]): CapturedRun[] {
   });
 }
 
-describe('WeRead English layout reconstruction', () => {
+describe('WeRead layout reconstruction', () => {
+  it('sorts mixed language by geometry and preserves sentence offsets', () => {
+    const run = (text: string, x: number, baseline: number) => ({ text, x, y: baseline - 10, baseline, width: 20, height: 20 });
+    const chapter = assembleChapter([run('。', 20, 40), run('好', 0, 40), run('world', 80, 0), run('Hello', 0, 0)]);
+    expect(chapter.text).toBe('Hello world好。');
+    for (const item of chapter.runs) expect(chapter.text.slice(item.startOffset, item.endOffset)).toBe(item.text);
+  });
+
   it('preserves the word boundary after a comma so highlighting does not combine two words', () => {
     const chapter = assembleChapter(positionedLines(['One day, he tried it. It worked.']));
     expect(chapter.text).toBe('One day, he tried it. It worked.');

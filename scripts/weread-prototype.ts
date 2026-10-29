@@ -1,9 +1,7 @@
-// Throwaway browser fixture for feature/weread-reader. No TTS calls.
+// Browser acceptance fixture for WeRead capture, geometry and seeking. No TTS calls.
 import { installWereadCapture } from '../src/content/weread/capture';
 import { extractWeread } from '../src/content/weread/reader';
-import { WereadHighlighter } from '../src/content/weread/highlighter';
-import { WereadScrubber } from '../src/content/weread/scrubber';
-import { initAutoScroll } from '../src/content/highlighting/auto-scroll';
+import { PlaybackAnnotations } from '../src/content/highlighting/playback-annotations';
 import { chunkText } from '../src/lib/chunker';
 
 const nativeRect = Element.prototype.getBoundingClientRect;
@@ -11,19 +9,16 @@ installWereadCapture();
 const root = document.querySelector<HTMLElement>('.renderTargetContainer')!;
 const result = document.querySelector<HTMLPreElement>('#result')!;
 const paragraphs = Array.from({ length: 80 }, (_, i) => `这是第${i + 1}段原型测试。我们正在验证微信读书章节的朗读与同步高亮功能。文字按照坐标恢复顺序，重复绘制不会重复朗读。每段内容只保存在内存中，播放结束后可以清理高亮。`);
-let manager: WereadHighlighter | undefined;
-let scrubber: WereadScrubber | undefined;
+let annotations: PlaybackAnnotations | undefined;
 let chunks: ReturnType<typeof chunkText> = [];
 let index = 0;
 function highlight() {
   const chunk = chunks[index];
-  manager?.highlightSentence(chunk.startOffset, chunk.endOffset);
-  manager?.highlightWord(chunk.startOffset, Math.min(chunk.startOffset + 2, chunk.endOffset));
+  annotations?.highlightProgress(chunk, 0.1, 1);
   result.textContent += `\n高亮第 ${index + 1}/${chunks.length} 句：${chunk.text}`;
 }
 document.querySelector<HTMLButtonElement>('#run')!.onclick = async () => {
-  manager?.destroy();
-  scrubber?.destroy();
+  annotations?.destroy();
   const measured: number[] = [];
   const cached: number[] = [];
   for (let i = 0; i < 7; i++) {
@@ -72,12 +67,12 @@ document.querySelector<HTMLButtonElement>('#run')!.onclick = async () => {
     extractedCharacters: actual.length, segments: chunks.length, captureMs: +median(measured).toFixed(2),
     cachedMeasurementMs: +median(cached).toFixed(2), extractionMs: +extractMs.toFixed(2),
     diagnostics: JSON.parse(root.dataset.recitoCapture!) }, null, 2);
-  manager = new WereadHighlighter(chapter, { wordEnabled: true, sentenceEnabled: true, autoScroll: true,
-    wordColor: 'rgba(255,190,0,.35)', sentenceColor: 'rgba(255,190,0,.15)' }, () => { result.textContent += '\n排版失效'; });
-  initAutoScroll(); index = 0;
-  scrubber = new WereadScrubber(chapter, chunks, () => true, (chunkIndex) => {
-    index = chunkIndex;
-    highlight();
+  index = 0;
+  annotations = new PlaybackAnnotations(chapter, chunks, { wordEnabled: true, sentenceEnabled: true, autoScroll: true,
+    wordColor: 'rgba(255,190,0,.35)', sentenceColor: 'rgba(255,190,0,.15)' }, {
+    isActive: () => true,
+    onSeek: (chunkIndex) => { index = chunkIndex; highlight(); },
+    onInvalidated: () => { result.textContent += '\n排版失效'; },
   });
   document.querySelector<HTMLButtonElement>('#next')!.disabled = false;
   document.querySelector<HTMLButtonElement>('#tail')!.disabled = false;

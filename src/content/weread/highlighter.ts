@@ -2,7 +2,7 @@ import type { ResolvedHighlightSettings, TextChunk } from '@shared/types';
 import { scrollToHighlightRect } from '../highlighting/auto-scroll';
 import type { WereadChapter } from './reader';
 
-/** Prototype: at most the current sentence/word's rectangles, never a chapter-sized text layer. */
+/** Draw only the current sentence/word's rectangles. */
 export class WereadHighlighter {
   private overlay = document.createElement('div');
   private word = document.createElement('div');
@@ -19,6 +19,8 @@ export class WereadHighlighter {
     this.originalPosition = chapter.root.style.position;
     if (getComputedStyle(chapter.root).position === 'static') chapter.root.style.position = 'relative';
     this.overlay.className = 'recito-weread-highlights';
+    this.word.className = 'recito-weread-word';
+    this.sentence.className = 'recito-weread-sentence';
     this.overlay.setAttribute('aria-hidden', 'true');
     Object.assign(this.overlay.style, { position: 'absolute', inset: '0', pointerEvents: 'none', zIndex: '5' });
     this.overlay.append(this.sentence, this.word);

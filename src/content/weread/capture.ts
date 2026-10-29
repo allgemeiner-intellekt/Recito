@@ -1,12 +1,14 @@
 import type { CapturedRun, WereadCapture } from './model';
 import type { WereadCaptureRequest, WereadCaptureResponse } from '@shared/messages';
 
-/** Prototype: retain the chapter's DOM geometry just before WeRead converts it to Canvas. */
+/** Retain the chapter's DOM geometry just before WeRead converts it to Canvas. */
 export function installWereadCapture(): () => void {
   const original = Element.prototype.getBoundingClientRect;
-  let lastKey = '';
+  let seen = new WeakMap<Element, string>();
   let snapshot: WereadCapture = { url: location.href, runs: [], width: 0, captureMs: 0, truncated: false };
   let capturing = false;
+  // Runtime imports can make CRXJS emit an async loader, missing the site's
+  // initial layout. Keep this document_start MAIN-world entry self-contained.
   const requestType: WereadCaptureRequest['type'] = 'recito:weread:request';
   const responseType: WereadCaptureResponse<WereadCapture>['type'] = 'recito:weread:response';
 
@@ -19,9 +21,10 @@ export function installWereadCapture(): () => void {
       try {
         const html = this.innerHTML;
         const key = `${location.href}:${rect.width}:${rect.height}:${html}`;
-        if (lastKey !== key) {
+        if (seen.get(this) !== key) {
           // An empty or failed layout must not leave the previous chapter usable.
-          lastKey = '';
+          // Only the latest element/layout can reuse the global snapshot.
+          seen = new WeakMap();
           snapshot = { url: location.href, runs: [], width: rect.width, captureMs: 0, truncated: false };
           const start = performance.now();
           const runs: CapturedRun[] = [];
@@ -52,10 +55,10 @@ export function installWereadCapture(): () => void {
             if (truncated) break;
           }
           snapshot = { url: location.href, runs, width: rect.width, captureMs: performance.now() - start, truncated };
-          if (runs.length > 0) lastKey = key;
+          if (runs.length > 0) seen.set(this, key);
         }
       } catch {
-        lastKey = '';
+        seen = new WeakMap();
         snapshot = { url: location.href, runs: [], width: 0, captureMs: 0, truncated: false };
         // Never interrupt the site's layout if capture fails.
       } finally {
