@@ -36,8 +36,16 @@ const CANDIDATE_SELECTORS = [
   '.content',
 ];
 
+const wordSegmenter = new Intl.Segmenter(undefined, { granularity: 'word' });
+
 function wordCount(text: string): number {
-  return text.split(/\s+/).filter(Boolean).length;
+  // Whitespace splitting counts an entire Chinese paragraph as one word.
+  // Use word boundaries for both minimum-length checks and density scoring.
+  let count = 0;
+  for (const segment of wordSegmenter.segment(text)) {
+    if (segment.isWordLike) count++;
+  }
+  return count;
 }
 
 function stripNoise(root: Element): void {
