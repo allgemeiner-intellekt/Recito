@@ -46,8 +46,6 @@ export interface SpeedRange {
 
 export const PROVIDER_SPEED_RANGES: Record<string, SpeedRange | null> = {
   openai: { min: 0.5, max: 2.0 },
-  groq: { min: 0.5, max: 2.0 },
-  elevenlabs: { min: 0.7, max: 1.2 },
   mimo: null,
   custom: { min: 0.5, max: 2.0 },
 };

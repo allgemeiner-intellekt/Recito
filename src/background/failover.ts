@@ -1,8 +1,7 @@
 import type { ProviderConfig, Voice } from '@shared/types';
 import { ApiError } from '@shared/api-error';
 import { getProviders } from '@shared/storage';
-import { getProvider } from '@providers/registry';
-import { getCachedVoices, setCachedVoices } from '@providers/voice-cache';
+import { isSupportedProvider } from '@shared/provider-support';
 
 export interface ConfigHealth {
   status: 'healthy' | 'cooldown' | 'failed';
@@ -110,6 +109,7 @@ export async function getNextCandidate(
 
   // Filter to same provider type (and same baseUrl for custom)
   const candidates = allConfigs.filter((c) => {
+    if (!isSupportedProvider(c.providerId)) return false;
     if (c.id === failedConfigId) return false;
     if (c.providerId !== session.providerId) return false;
     // For custom providers, must share the same base URL
@@ -124,23 +124,6 @@ export async function getNextCandidate(
     const health = getOrCreateHealth(candidate.id);
     if (health.status === 'failed' || (health.status === 'cooldown' && health.cooldownUntil && Date.now() < health.cooldownUntil)) {
       continue;
-    }
-
-    // For ElevenLabs, verify the target voice is available on this account
-    if (candidate.providerId === 'elevenlabs') {
-      let voices = getCachedVoices(candidate.id);
-      if (!voices) {
-        try {
-          const provider = getProvider(candidate.providerId);
-          voices = await provider.listVoices(candidate);
-          setCachedVoices(candidate.id, voices);
-        } catch {
-          continue; // Can't list voices — skip this candidate
-        }
-      }
-      if (!voices.some((v) => v.id === session.voice.id)) {
-        continue; // Target voice not available on this account
-      }
     }
 
     return candidate;

@@ -1,3 +1,4 @@
+import { isSupportedProvider } from '@shared/provider-support';
 import React, { useState, useEffect, useCallback } from 'react';
 import { MSG, sendMessage } from '@shared/messages';
 import type { PlaybackState, ProviderConfig, AppSettings, PageInfo } from '@shared/types';
@@ -32,7 +33,7 @@ export function Popup() {
         getSettings(),
         getActiveProvider(),
       ]);
-      setProviders(provs);
+      setProviders(provs.filter((p) => isSupportedProvider(p.providerId)));
       setSettings(sett);
       setActiveProvider(active);
     })();
@@ -104,7 +105,7 @@ export function Popup() {
           getSettings(),
           getActiveProvider(),
         ]);
-        setProviders(provs);
+        setProviders(provs.filter((p) => isSupportedProvider(p.providerId)));
         setSettings(sett);
         setActiveProvider(active);
       })();

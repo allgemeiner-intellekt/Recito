@@ -1,45 +1,27 @@
-# Supported TTS Providers
+# Supported TTS providers
 
-Recito supports any OpenAI-compatible TTS API. Below is a comparison of the built-in provider presets.
+Recito maintains dedicated adapters for Xiaomi MiMo and OpenAI, plus a Custom adapter for OpenAI-compatible speech services. This describes the current implementation, rather than every capability offered by those vendors.
 
-| Provider | Voices | Latency | Quality | Free Tier | Pricing |
-|----------|--------|---------|---------|-----------|---------|
-| **OpenAI** | 6 built-in (alloy, echo, fable, onyx, nova, shimmer) | ~500ms | High | No | $15/1M chars (tts-1), $30/1M chars (tts-1-hd) |
-| **ElevenLabs** | 1000+ (incl. voice cloning) | ~300-800ms | Very High | 10k chars/month | From $5/mo (30k chars) |
-| **Groq** | PlayAI voices | ~100-200ms | Good | Yes (rate-limited) | Pay-per-use |
-| **Custom** | Depends on endpoint | Varies | Varies | Varies | Varies |
+| Entry | Current integration | Voice selection |
+|-------|---------------------|-----------------|
+| Xiaomi MiMo | Chat completions with base64 audio | Built-in catalog in the adapter |
+| OpenAI | Audio speech endpoint | Built-in catalog in the adapter |
+| Custom | OpenAI-compatible audio speech endpoint | Endpoint voice list |
 
-## Provider Details
+MiMo historical model and voice compatibility is tracked in #8 and #9. OpenAI API migration is tracked in #7. This cleanup does not change their model selection or synthesis requests.
 
-### OpenAI
+## Custom services
 
-- **API Keys**: [platform.openai.com/api-keys](https://platform.openai.com/api-keys)
-- **Models**: `tts-1` (faster, lower quality), `tts-1-hd` (slower, higher quality)
-- **Formats**: mp3, opus, aac, flac
-- **Best for**: Reliable, consistent quality with simple voice selection
+Supply a base URL, API key, and model. The adapter normalizes the URL to end in /v1, probes the voice endpoint, and requests complete audio from the speech endpoint. See `src/providers/custom.ts` and `src/providers/openai-compatible.ts` for the exact contract.
 
-### ElevenLabs
+A service needs compatible request and response formats. A vendor name alone does not imply compatibility. The generic adapter does not restore removed providers' specialized timestamps, voice discovery, or quota tracking.
 
-- **API Keys**: [elevenlabs.io/app/settings/api-keys](https://elevenlabs.io/app/settings/api-keys)
-- **Models**: `eleven_multilingual_v2` (recommended), `eleven_turbo_v2_5`, `eleven_monolingual_v1`
-- **Best for**: Highest quality, multilingual support, custom/cloned voices
-- **Note**: Character-based billing; usage is shown in the provider settings panel
+## Retired dedicated adapters
 
-### Groq
+Groq and ElevenLabs dedicated adapters have been removed. Existing configurations remain in local storage and can be deleted in Settings, where they are marked unsupported. They are excluded from playback selectors and failover. An active retired provider selection is cleared without selecting another provider or converting the saved configuration.
 
-- **API Keys**: [console.groq.com/keys](https://console.groq.com/keys)
-- **Models**: PlayAI TTS
-- **Best for**: Ultra-low latency; great for real-time reading on long articles
-- **Note**: Smaller chunk sizes are used automatically for optimal streaming
+To use a compatible service, add a new Custom configuration manually. Delete the old configuration once its saved key is no longer needed.
 
-### Custom (OpenAI-compatible)
+## Multi-key failover
 
-Any endpoint that implements the OpenAI TTS API (`POST /v1/audio/speech`, `GET /v1/audio/voices`).
-
-- Provide your own **Base URL** and **API Key**
-- Useful for self-hosted models (e.g., Piper, Coqui) behind an OpenAI-compatible wrapper
-- The extension auto-appends `/v1` if your base URL doesn't already include it
-
-## Multi-key Failover
-
-You can add multiple API keys for the same provider. If one key hits a rate limit or fails, the extension automatically fails over to the next healthy key. Health status is shown in Settings > Providers.
+Add multiple keys for the same provider group to allow failover to another healthy key. Custom configurations must use the same base URL to share a failover group. Health status is shown in Settings > Providers.

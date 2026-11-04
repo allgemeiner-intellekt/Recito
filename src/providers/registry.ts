@@ -1,7 +1,6 @@
+import { isSupportedProvider } from '@shared/provider-support';
 import type { TTSProvider } from '@shared/types';
 import { openaiProvider } from './openai';
-import { elevenlabsProvider } from './elevenlabs';
-import { groqProvider } from './groq';
 import { customProvider } from './custom';
 import { mimoProvider } from './mimo';
 
@@ -14,16 +13,14 @@ export interface ProviderMeta {
 
 const providerMap: Record<string, TTSProvider> = {
   openai: openaiProvider,
-  elevenlabs: elevenlabsProvider,
-  groq: groqProvider,
   mimo: mimoProvider,
   custom: customProvider,
 };
 
 export function getProvider(providerId: string): TTSProvider {
   const provider = providerMap[providerId];
-  if (!provider) {
-    throw new Error(`Unknown provider: ${providerId}`);
+  if (!isSupportedProvider(providerId) || !provider) {
+    throw new Error(`Provider "${providerId}" is no longer supported. Select MiMo, OpenAI, or configure a compatible service as Custom in Settings.`);
   }
   return provider;
 }
@@ -34,14 +31,9 @@ export interface ChunkLimits {
   splitThreshold: number;
 }
 
-export function getChunkLimits(providerId: string): ChunkLimits {
-  switch (providerId) {
-    case 'groq':
-      return { minWords: 15, maxWords: 25, splitThreshold: 50 };
-    default:
-      // Cloud providers benefit from larger chunks (better prosody, fewer API calls)
-      return { minWords: 30, maxWords: 50, splitThreshold: 80 };
-  }
+export function getChunkLimits(_providerId: string): ChunkLimits {
+  // All maintained providers use sentence chunks with the same sizing.
+  return { minWords: 30, maxWords: 50, splitThreshold: 80 };
 }
 
 export const PROVIDER_LIST: ProviderMeta[] = [
@@ -52,21 +44,9 @@ export const PROVIDER_LIST: ProviderMeta[] = [
     website: 'https://platform.openai.com/api-keys',
   },
   {
-    id: 'elevenlabs',
-    name: 'ElevenLabs',
-    description: 'Premium voice cloning and synthesis',
-    website: 'https://elevenlabs.io/app/settings/api-keys',
-  },
-  {
-    id: 'groq',
-    name: 'Groq',
-    description: 'Ultra-fast inference with PlayAI voices',
-    website: 'https://console.groq.com/keys',
-  },
-  {
     id: 'mimo',
     name: 'Xiaomi Mimo',
-    description: 'Multilingual TTS with emotion and dialect support',
+    description: 'Built-in MiMo voices and synthesis',
     website: 'https://platform.xiaomimimo.com',
   },
   {
