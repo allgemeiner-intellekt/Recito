@@ -12,7 +12,7 @@ let data: Record<string, unknown>;
 const retired: ProviderConfig[] = ['groq', 'elevenlabs'].map((providerId) => ({
   id: providerId, providerId, name: providerId, apiKey: 'saved-key-to-retain',
 }));
-const mimo: ProviderConfig = { id: 'mimo', providerId: 'mimo', name: 'MiMo', apiKey: 'mimo-key' };
+const mimo: ProviderConfig = { id: 'mimo', providerId: 'mimo', name: 'MiMo', apiKey: 'mimo-key', extraParams: { model: 'mimo-v2.5-tts' } };
 
 beforeEach(() => {
   resetAllHealth();
@@ -83,4 +83,39 @@ describe('maintained provider failover', () => {
     const session = { config: retired[0], providerId: 'groq', voice: { id: 'voice', name: 'Voice' }, generation: 1 };
     expect(await getNextCandidate(session, retired[0].id)).toBeNull();
   });
+});
+
+
+describe('MiMo configuration migration', () => {
+  it.each([undefined, {}, { model: 'mimo-v2-tts', other: 'retain' }, { model: 'mimo-v2.5-tts' }])(
+    'migrates saved official params %j before direct playback and editing', async (extraParams) => {
+      data['ir-providers'] = [{ ...mimo, extraParams }];
+      data['ir-settings'] = { ...DEFAULT_SETTINGS, activeProviderGroup: 'mimo', activeVoiceId: 'default_en' };
+      const migrated = { ...mimo, extraParams: { ...extraParams, model: 'mimo-v2.5-tts' } };
+      expect(await getActiveProvider()).toEqual(migrated);
+      expect(await getProviders()).toEqual([migrated]);
+      expect(data['ir-providers']).toEqual([migrated]);
+      // Leave old voice selection intact so playback/UI can require reselection.
+      expect((await getSettings()).activeVoiceId).toBe('default_en');
+      const writes = vi.mocked(chrome.storage.local.set).mock.calls.length;
+      await getProviders();
+      expect(vi.mocked(chrome.storage.local.set).mock.calls.length).toBe(writes);
+    },
+  );
+
+  it('normalizes official configurations on save without losing the key or other params', async () => {
+    await saveProvider({ ...mimo, baseUrl: 'https://api.xiaomimimo.com/v1/', extraParams: { model: 'mimo-v2-tts', other: 1 } });
+    expect(await getProviders()).toContainEqual({ ...mimo, baseUrl: 'https://api.xiaomimimo.com/v1/', extraParams: { model: 'mimo-v2.5-tts', other: 1 } });
+  });
+
+  it.each([undefined, 'mimo-v2-tts', 'service-specific-model'])(
+    'preserves compatible endpoint model %s including its historical default', async (model) => {
+      const custom = { ...mimo, baseUrl: 'https://compatible.example/v1', extraParams: model ? { model } : undefined };
+      data['ir-providers'] = [custom];
+      const expected = { ...custom, extraParams: { model: model ?? 'mimo-v2-tts' } };
+      expect(await getProviders()).toEqual([expected]);
+      await saveProvider(custom);
+      expect(await getProviders()).toEqual([expected]);
+    },
+  );
 });

@@ -3,6 +3,7 @@ import type { ProviderConfig, Voice, AppSettings, ThemeMode } from '@shared/type
 import { PROVIDER_LIST } from '@providers/registry';
 import { isSupportedProvider } from '@shared/provider-support';
 import { MIMO_MODELS } from '@providers/mimo';
+import { isOfficialMimoEndpoint, normalizeMimoConfig, resolveMimoModel } from '@shared/mimo-config';
 import {
   getProviders,
   saveProvider,
@@ -70,30 +71,16 @@ interface ProviderFormData {
 }
 
 const DEFAULT_MIMO_MODEL_ID = MIMO_MODELS[0].modelId;
-const LEGACY_MIMO_MODEL_ID = 'mimo-v2-tts';
-type MimoModelId = (typeof MIMO_MODELS)[number]['modelId'];
-
 const EMPTY_FORM: ProviderFormData = { providerId: 'openai', name: '', apiKey: '', baseUrl: '', customModel: 'tts-1', mimoModel: DEFAULT_MIMO_MODEL_ID };
 
 function nextFormState(current: ProviderFormData, partial: Partial<ProviderFormData>): ProviderFormData {
   return { ...current, ...partial };
 }
 
-function isKnownMimoModel(value: unknown): value is MimoModelId {
-  return typeof value === 'string' && MIMO_MODELS.some((model) => model.modelId === value);
-}
-
-function getMimoFormModel(config: ProviderConfig): string {
-  if (config.providerId !== 'mimo') {
-    return DEFAULT_MIMO_MODEL_ID;
-  }
-  const storedModel = config.extraParams?.model;
-  return isKnownMimoModel(storedModel) ? storedModel : LEGACY_MIMO_MODEL_ID;
-}
-
 function getFormProviderConfig(
   form: ProviderFormData,
   editingId: string | null,
+  existing?: ProviderConfig,
 ): ProviderConfig {
   const trimmedProviderId = form.providerId.trim();
   const trimmedName = form.name.trim();
@@ -107,9 +94,12 @@ function getFormProviderConfig(
   if (trimmedProviderId === 'custom' && form.customModel.trim()) {
     config.extraParams = { model: form.customModel.trim() };
   } else if (trimmedProviderId === 'mimo') {
-    config.extraParams = { model: form.mimoModel };
+    config.extraParams = {
+      ...(existing?.providerId === 'mimo' ? existing.extraParams : undefined),
+      model: form.mimoModel,
+    };
   }
-  return config;
+  return normalizeMimoConfig(config);
 }
 
 function describeVoiceLoadError(error: unknown): string {
@@ -154,6 +144,7 @@ export function Options() {
   // Confirm reset
   const [confirmReset, setConfirmReset] = useState(false);
   const requiresBaseUrl = form.providerId === 'custom';
+  const resolvedFormMimoModel = resolveMimoModel({ baseUrl: form.baseUrl, extraParams: { model: form.mimoModel } });
   const canTestConnection = Boolean(form.apiKey.trim() && (!requiresBaseUrl || form.baseUrl.trim()));
   const canSaveProvider = Boolean(form.apiKey.trim() && (!requiresBaseUrl || form.baseUrl.trim()));
 
@@ -238,14 +229,14 @@ export function Options() {
       apiKey: config.apiKey,
       baseUrl: config.baseUrl ?? '',
       customModel: (config.extraParams?.model as string) ?? 'tts-1',
-      mimoModel: getMimoFormModel(config),
+      mimoModel: resolveMimoModel(config),
     });
     setTestResult(null);
     setShowForm(true);
   };
 
   const handleSaveProvider = async () => {
-    const config = getFormProviderConfig(form, editingId);
+    const config = getFormProviderConfig(form, editingId, providers.find((provider) => provider.id === editingId));
     await saveProvider(config);
 
     // If first provider, set its group as active
@@ -279,7 +270,7 @@ export function Options() {
     setTesting(true);
     setTestResult(null);
     try {
-      const config = getFormProviderConfig(form, editingId ?? 'test');
+      const config = getFormProviderConfig(form, editingId ?? 'test', providers.find((provider) => provider.id === editingId));
       const ok = await sendMessage<boolean>({ type: MSG.VALIDATE_KEY, config });
       setTestResult(ok ? 'Connection successful!' : 'Connection failed.');
     } catch (err: unknown) {
@@ -724,20 +715,53 @@ export function Options() {
                   {form.providerId === 'mimo' && (
                     <label className="form-label">
                       Model
-                      <select
-                        className="form-select"
-                        value={form.mimoModel}
+                      {!isOfficialMimoEndpoint(form.baseUrl) ? (
+                        <input
+                          className="form-input"
+                          type="text"
+                          value={form.mimoModel}
+                          onChange={(e) => {
+                            setTestResult(null);
+                            setForm(nextFormState(form, { mimoModel: e.target.value }));
+                          }}
+                        />
+                      ) : (
+                        <select
+                          className="form-select"
+                          value={resolvedFormMimoModel}
+                          onChange={(e) => {
+                            setTestResult(null);
+                            setForm(nextFormState(form, { mimoModel: e.target.value }));
+                          }}
+                        >
+                          {!MIMO_MODELS.some((m) => m.modelId === resolvedFormMimoModel) && (
+                            <option value={resolvedFormMimoModel}>{resolvedFormMimoModel} (unsupported)</option>
+                          )}
+                          {MIMO_MODELS.map((m) => (
+                            <option key={m.modelId} value={m.modelId}>
+                              {m.label}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                      <span className="form-hint">MiMo v2.5 built-in voices. Default voice varies by deployment cluster. Saved historical voices require reselection.</span>
+                    </label>
+                  )}
+
+                  {form.providerId === 'mimo' && (
+                    <label className="form-label">
+                      Base URL (optional)
+                      <input
+                        className="form-input"
+                        type="url"
+                        value={form.baseUrl}
                         onChange={(e) => {
                           setTestResult(null);
-                          setForm(nextFormState(form, { mimoModel: e.target.value }));
+                          setForm(nextFormState(form, { baseUrl: e.target.value }));
                         }}
-                      >
-                        {MIMO_MODELS.map((m) => (
-                          <option key={m.modelId} value={m.modelId}>
-                            {m.label}
-                          </option>
-                        ))}
-                      </select>
+                        placeholder="https://api.xiaomimimo.com/v1"
+                      />
+                      <span className="form-hint">Nonofficial endpoints keep their model names; compatibility must be checked with the service.</span>
                     </label>
                   )}
 
@@ -825,6 +849,9 @@ export function Options() {
               <p className="empty-state">No voices available for this provider.</p>
             ) : (
               <div className="card-list">
+                {settings.activeProviderGroup === 'mimo' && settings.activeVoiceId && !voices.some((voice) => voice.id === settings.activeVoiceId) && (
+                  <p className="error-text" role="alert">Your saved MiMo voice is no longer listed. Choose a voice below before playing.</p>
+                )}
                 {voices.map((v) => {
                   const isActive = v.id === settings.activeVoiceId;
                   return (
