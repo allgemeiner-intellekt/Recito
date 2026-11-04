@@ -13,7 +13,7 @@ Two dedicated providers and a Custom entry for compatible services:
 | Provider | Voices | Speed range | Notes |
 |----------|--------|-------------|-------|
 | **OpenAI** | 6 (Alloy, Echo, Fable, Onyx, Nova, Shimmer) | 0.5–2.0x | Existing speech API integration |
-| **Xiaomi Mimo** | Built-in voice catalog | — | Built-in MiMo synthesis integration |
+| **Xiaomi Mimo** | MiMo v2.5 built-in voices | — | `mimo-v2.5-tts`, complete audio playback |
 | **Custom** | Configurable | 0.5–2.0x | Any OpenAI-compatible endpoint — set base URL, model, and API key |
 
 You can add multiple API keys per provider. Keys are stored locally in `chrome.storage.local` — nothing leaves your browser.
@@ -42,7 +42,7 @@ Dedicated adapters are maintained for MiMo and OpenAI. Other services must expos
 
 Saved Groq and ElevenLabs configurations remain in local storage and appear as unsupported in Settings. They cannot be activated or used for playback. If a retired provider was active, select a maintained provider again. Delete the old configuration when you no longer need its saved key; configure compatible services manually through Custom.
 
-MiMo model/voice migration and OpenAI API migration are tracked separately and are not part of this provider cleanup.
+MiMo uses `mimo-v2.5-tts` on the official endpoint. Saved official configurations with a missing model or `mimo-v2-tts` migrate automatically, keeping their API keys. Only the v2.5 voice catalog is offered; users with a saved historical or unavailable voice must select a voice again in Settings > Voices. `mimo_default` follows the deployment cluster, while named voices explicitly identify Chinese or English. Nonofficial MiMo base URLs keep their explicit model names and historical default; their compatibility with the current voice catalog must be checked with the service. See [provider details](PROVIDERS.md). OpenAI API migration remains tracked separately in #7.
 
 ### Provider Health & Failover
 

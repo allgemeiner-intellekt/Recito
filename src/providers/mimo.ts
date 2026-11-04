@@ -2,19 +2,14 @@ import type { TTSProvider, ProviderConfig, Voice, SynthesisResult, SynthesisOpti
 import { hasLikelyValidApiKeyFormat } from './api-key-format';
 import { ApiError } from '@shared/api-error';
 import { withTimeoutSignal } from '@shared/abort';
-
-const DEFAULT_BASE_URL = 'https://api.xiaomimimo.com/v1';
-const DEFAULT_MODEL = 'mimo-v2-tts';
+import { MIMO_BASE_URL, MIMO_MODEL, isOfficialMimoEndpoint, resolveMimoModel } from '@shared/mimo-config';
 
 export const MIMO_MODELS = [
-  { label: 'v2.5 (Latest)', modelId: 'mimo-v2.5-tts' },
-  { label: 'v2 (Legacy)', modelId: 'mimo-v2-tts' },
+  { label: 'v2.5', modelId: MIMO_MODEL },
 ] as const;
 
 const MIMO_VOICES: Voice[] = [
-  { id: 'mimo_default', name: 'Mimo Default' },
-  { id: 'default_zh', name: 'Chinese Female', language: 'zh' },
-  { id: 'default_en', name: 'English Female', language: 'en' },
+  { id: 'mimo_default', name: 'MiMo Default (depends on deployment cluster)' },
   { id: '冰糖', name: '冰糖 (Bingtang)', language: 'zh' },
   { id: '茉莉', name: '茉莉 (Moli)', language: 'zh' },
   { id: '苏打', name: '苏打 (Suda)', language: 'zh' },
@@ -32,9 +27,11 @@ function buildHeaders(apiKey: string): Record<string, string> {
   };
 }
 
-function resolveModel(config: ProviderConfig): string {
-  const value = config.extraParams?.model;
-  return typeof value === 'string' && value ? value : DEFAULT_MODEL;
+function voicesForConfig(config: ProviderConfig): Voice[] {
+  if (isOfficialMimoEndpoint(config.baseUrl) && resolveMimoModel(config) !== MIMO_MODEL) {
+    throw new ApiError('Select the supported MiMo v2.5 model in Settings > Providers.', 400, 'mimo', false);
+  }
+  return MIMO_VOICES;
 }
 
 function buildRequestBody(text: string, voiceId: string, model: string): Record<string, unknown> {
@@ -63,8 +60,8 @@ export const mimoProvider: TTSProvider = {
   id: 'mimo',
   name: 'Xiaomi Mimo',
 
-  async listVoices(_config: ProviderConfig): Promise<Voice[]> {
-    return MIMO_VOICES;
+  async listVoices(config: ProviderConfig): Promise<Voice[]> {
+    return voicesForConfig(config);
   },
 
   async synthesize(
@@ -73,8 +70,11 @@ export const mimoProvider: TTSProvider = {
     config: ProviderConfig,
     options?: SynthesisOptions,
   ): Promise<SynthesisResult> {
-    const baseUrl = config.baseUrl || DEFAULT_BASE_URL;
-    const body = buildRequestBody(text, voice.id, resolveModel(config));
+    const baseUrl = (config.baseUrl?.trim() || MIMO_BASE_URL).replace(/\/+$/, '');
+    if (!voicesForConfig(config).some((candidate) => candidate.id === voice.id)) {
+      throw new ApiError('This MiMo voice is no longer listed. Choose a voice in Settings > Voices before playing.', 400, 'mimo', false);
+    }
+    const body = buildRequestBody(text, voice.id, resolveMimoModel(config));
 
     let response: Response;
     try {
@@ -130,10 +130,9 @@ export const mimoProvider: TTSProvider = {
       return false;
     }
 
-    const baseUrl = config.baseUrl || DEFAULT_BASE_URL;
-    const body = buildRequestBody('test', MIMO_VOICES[0]!.id, resolveModel(config));
-
+    const baseUrl = (config.baseUrl?.trim() || MIMO_BASE_URL).replace(/\/+$/, '');
     try {
+      const body = buildRequestBody('test', voicesForConfig(config)[0]!.id, resolveMimoModel(config));
       const response = await fetch(`${baseUrl}/chat/completions`, {
         signal: AbortSignal.timeout(15_000),
         method: 'POST',

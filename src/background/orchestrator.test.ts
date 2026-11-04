@@ -134,6 +134,7 @@ import { playbackState } from './playback-state';
 import { stopWordTimingRelay } from './word-timing';
 import { getActiveProvider, getSettings, saveProgress } from '@shared/storage';
 import { getProvider } from '@providers/registry';
+import { invalidateVoiceCache } from '@providers/voice-cache';
 
 const mockGetActiveProvider = getActiveProvider as ReturnType<typeof vi.fn>;
 const mockGetSettings = getSettings as ReturnType<typeof vi.fn>;
@@ -143,6 +144,7 @@ const mockSendTabMessage = sendTabMessage as ReturnType<typeof vi.fn>;
 describe('orchestrator', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    invalidateVoiceCache();
     // Ensure playback is stopped before each test
     stopPlayback();
   });
@@ -307,6 +309,33 @@ describe('orchestrator', () => {
   });
 
   describe('startPlayback', () => {
+    it.each(['default_zh', 'default_en', 'missing'])('requires reselection of saved MiMo voice %s', async (activeVoiceId) => {
+      mockGetActiveProvider.mockResolvedValue({ id: 'voice-migration', providerId: 'mimo' });
+      mockGetSettings.mockResolvedValue({ activeVoiceId });
+      const synthesize = vi.fn();
+      mockGetProvider.mockReturnValue({ listVoices: vi.fn().mockResolvedValue([{ id: 'mimo_default', name: 'Default' }, { id: 'Mia', name: 'Mia' }]), synthesize });
+      await startPlayback(1);
+      expect(mockSendTabMessage).toHaveBeenCalledWith(1, expect.objectContaining({ type: MSG.PLAYBACK_ERROR, error: expect.stringContaining('Settings > Voices') }));
+      expect(mockSendTabMessage).not.toHaveBeenCalledWith(1, expect.objectContaining({ type: MSG.EXTRACT_CONTENT }));
+      expect(synthesize).not.toHaveBeenCalled();
+    });
+
+    it.each(['Mia', null])('accepts current or unset MiMo voice %s and refreshes catalog after model changes', async (activeVoiceId) => {
+      const config = { id: 'model-change', providerId: 'mimo', extraParams: { model: 'mimo-v2-tts' } };
+      mockGetActiveProvider.mockResolvedValue(config);
+      mockGetSettings.mockResolvedValue({ activeVoiceId });
+      const listVoices = vi.fn().mockResolvedValue([{ id: 'mimo_default', name: 'Default' }, { id: 'Mia', name: 'Mia' }]);
+      mockGetProvider.mockReturnValue({ listVoices });
+      mockSendTabMessage.mockResolvedValue({ error: 'No content' });
+      await startPlayback(1);
+      await startPlayback(1);
+      expect(listVoices).toHaveBeenCalledTimes(1);
+      mockGetActiveProvider.mockResolvedValue({ ...config, extraParams: { model: 'mimo-v2.5-tts' } });
+      await startPlayback(1);
+      expect(listVoices).toHaveBeenCalledTimes(2);
+      expect(mockSendTabMessage).not.toHaveBeenCalledWith(1, expect.objectContaining({ type: MSG.PLAYBACK_ERROR }));
+    });
+
     it('observes completion delivered immediately with audio and preserves progress after seek', async () => {
       mockGetActiveProvider.mockResolvedValue({ id: 'immediate', providerId: 'mimo' });
       mockGetSettings.mockResolvedValue({ activeVoiceId: 'v1' });

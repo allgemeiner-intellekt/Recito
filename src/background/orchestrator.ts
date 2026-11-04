@@ -121,14 +121,18 @@ async function initSession(): Promise<PlaybackSession> {
   const provider = getProvider(providerConfig.providerId);
 
   // Use voice cache to avoid per-session API calls
-  let voices = getCachedVoices(providerConfig.id);
+  let voices = getCachedVoices(providerConfig);
   if (!voices) {
     voices = await provider.listVoices(providerConfig);
-    setCachedVoices(providerConfig.id, voices);
+    setCachedVoices(providerConfig, voices);
   }
 
   const voiceId = settings.activeVoiceId;
-  const voice = voices.find((v) => v.id === voiceId) ?? voices[0];
+  const selectedVoice = voices.find((v) => v.id === voiceId);
+  if (providerConfig.providerId === 'mimo' && voiceId && !selectedVoice) {
+    throw new Error('Your saved MiMo voice is no longer listed. Choose a voice in Settings > Voices before playing.');
+  }
+  const voice = selectedVoice ?? voices[0];
   if (!voice) {
     throw new Error('No voice available for this provider.');
   }

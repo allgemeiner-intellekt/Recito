@@ -1,6 +1,7 @@
 import { isSupportedProvider } from './provider-support';
 import type { ProviderConfig, AppSettings } from './types';
 import { DEFAULT_SETTINGS } from './constants';
+import { normalizeMimoConfig } from './mimo-config';
 
 const PROVIDERS_KEY = 'ir-providers';
 const SETTINGS_KEY = 'ir-settings';
@@ -23,16 +24,21 @@ export function getProviderGroupKey(config: ProviderConfig): string {
 
 export async function getProviders(): Promise<ProviderConfig[]> {
   const result = await chrome.storage.local.get(PROVIDERS_KEY);
-  return result[PROVIDERS_KEY] ?? [];
+  const providers: ProviderConfig[] = result[PROVIDERS_KEY] ?? [];
+  const normalized = providers.map(normalizeMimoConfig);
+  if (normalized.some((config, index) => config !== providers[index])) {
+    await chrome.storage.local.set({ [PROVIDERS_KEY]: normalized });
+  }
+  return normalized;
 }
 
 export async function saveProvider(config: ProviderConfig): Promise<void> {
-  const normalizedConfig: ProviderConfig = {
+  const normalizedConfig = normalizeMimoConfig({
     ...config,
     name: config.name.trim(),
     apiKey: config.apiKey.trim(),
     baseUrl: config.baseUrl?.trim() || undefined,
-  };
+  });
   const providers = await getProviders();
   const index = providers.findIndex((p) => p.id === normalizedConfig.id);
   if (index >= 0) {
