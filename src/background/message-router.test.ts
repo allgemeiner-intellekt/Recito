@@ -70,10 +70,6 @@ vi.mock('@providers/registry', () => ({
   getProvider: vi.fn(),
 }));
 
-vi.mock('@providers/elevenlabs', () => ({
-  getElevenLabsUsage: vi.fn(),
-}));
-
 vi.mock('@shared/storage', () => ({
   getProviders: vi.fn(),
   setActiveProviderGroup: vi.fn(),

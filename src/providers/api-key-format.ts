@@ -14,9 +14,6 @@ export function hasLikelyValidApiKeyFormat(config: ProviderConfig): boolean {
   switch (config.providerId) {
     case 'openai':
       return hasPrefixAndLength(apiKey, 'sk-', 20);
-    case 'groq':
-      return hasPrefixAndLength(apiKey, 'gsk_', 20);
-    case 'elevenlabs':
     case 'mimo':
       return apiKey.length >= 16;
     case 'custom':

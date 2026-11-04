@@ -1,6 +1,6 @@
 # Recito
 
-Open-source Chrome extension (Manifest V3) that turns any web page into an audiobook with karaoke-style word highlighting. Bring Your Own Key — works with OpenAI, ElevenLabs, Groq, Xiaomi Mimo, or any OpenAI-compatible TTS endpoint.
+Open-source Chrome extension (Manifest V3) that turns any web page into an audiobook with karaoke-style word highlighting. Bring Your Own Key — works with Xiaomi MiMo, OpenAI, or a custom OpenAI-compatible TTS endpoint.
 
 Inspired by Speechify, but open-source and provider-agnostic.
 
@@ -8,15 +8,13 @@ Inspired by Speechify, but open-source and provider-agnostic.
 
 ### TTS Providers (BYOK)
 
-Five built-in providers, each with its own voice catalog and speed range:
+Two dedicated providers and a Custom entry for compatible services:
 
 | Provider | Voices | Speed range | Notes |
 |----------|--------|-------------|-------|
-| **OpenAI** | 6 (Alloy, Echo, Fable, Onyx, Nova, Shimmer) | 0.25–4.0x | Default choice for most users |
-| **ElevenLabs** | Dynamic (fetched from account) | 0.7–1.2x | Word-level timing via `/with-timestamps`; Flash v2.5 (economy) or Multilingual v2 (quality) models; shows character usage & monthly quota |
-| **Groq** | 10 PlayAI voices (English + Arabic) | 0.25–4.0x | Ultra-fast inference |
-| **Xiaomi Mimo** | 3 built-in voices | — | Multilingual with emotion/dialect support |
-| **Custom** | Configurable | 0.25–4.0x | Any OpenAI-compatible endpoint — set base URL, model, and API key |
+| **OpenAI** | 6 (Alloy, Echo, Fable, Onyx, Nova, Shimmer) | 0.5–2.0x | Existing speech API integration |
+| **Xiaomi Mimo** | Built-in voice catalog | — | Built-in MiMo synthesis integration |
+| **Custom** | Configurable | 0.5–2.0x | Any OpenAI-compatible endpoint — set base URL, model, and API key |
 
 You can add multiple API keys per provider. Keys are stored locally in `chrome.storage.local` — nothing leaves your browser.
 
@@ -28,7 +26,7 @@ You can add multiple API keys per provider. Keys are stored locally in `chrome.s
 - **Text scrubber** — hover over any text on the page to preview chunk boundaries; click to seek directly to that position.
 - **Reading progress & resume** — automatically saves your position per URL (7-day TTL). When you revisit a page, the extension offers to resume where you left off.
 - **Selection reading** — select text on a page to read just that selection instead of the full article.
-- **Speed slider** — continuous slider (0.25–4.0x) with snap-to-preset chips at 1x, 1.25x, 1.5x, 2x. Range clamps automatically per provider.
+- **Speed slider** — continuous slider (0.5–2.0x) with snap-to-preset chips at 1x, 1.25x, 1.5x, 2x. Range clamps automatically per provider.
 - **Prefetch buffer** — synthesizes 2 chunks ahead for gapless playback (configurable).
 
 ### Content Extraction
@@ -36,13 +34,20 @@ You can add multiple API keys per provider. Keys are stored locally in `chrome.s
 - **Smart extraction** — uses Mozilla Readability with a custom scoring heuristic that considers tag type, class/ID patterns, paragraph density, and link density to find the main content.
 - **Gmail support** — detects Gmail and extracts email body from Gmail-specific DOM selectors.
 - **Noise stripping** — removes nav, footer, header, aside, ads, comments, and cookie banners before extraction.
-- **Sentence-based chunking** — splits text into sentence-level chunks. Provider-specific sizing: smaller chunks for Groq (15–25 words) for better quality, larger chunks for others (30–50 words) for better prosody.
+- **Sentence-based chunking** — splits text into sentence-level chunks. Chunks target 30–50 words, preserving sentence boundaries for better prosody.
+
+### Provider maintenance scope
+
+Dedicated adapters are maintained for MiMo and OpenAI. Other services must expose an OpenAI-compatible speech API to work through Custom. Provider-specific voice discovery, timestamps, and quota tracking are not available through this generic interface.
+
+Saved Groq and ElevenLabs configurations remain in local storage and appear as unsupported in Settings. They cannot be activated or used for playback. If a retired provider was active, select a maintained provider again. Delete the old configuration when you no longer need its saved key; configure compatible services manually through Custom.
+
+MiMo model/voice migration and OpenAI API migration are tracked separately and are not part of this provider cleanup.
 
 ### Provider Health & Failover
 
 - **Automatic failover** — if a provider returns an error, the extension tries the next healthy config in the same provider group (up to 3 attempts per chunk).
 - **Smart cooldowns** — 401 = permanent failure (bad key), 429 = 1-min cooldown (rate limit), 403 = 5-min cooldown (quota), 5xx/network = 30-sec cooldown.
-- **ElevenLabs voice verification** — on failover, verifies the target voice exists on the new account before switching.
 
 ### UI
 

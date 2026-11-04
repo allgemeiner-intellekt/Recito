@@ -230,7 +230,7 @@ describe('orchestrator', () => {
       // Start playback to create an AbortController, then stop
       mockGetActiveProvider.mockResolvedValue({
         id: 'test-config',
-        providerId: 'groq',
+        providerId: 'mimo',
         name: 'Test',
         apiKey: 'key',
       });
@@ -308,7 +308,7 @@ describe('orchestrator', () => {
 
   describe('startPlayback', () => {
     it('observes completion delivered immediately with audio and preserves progress after seek', async () => {
-      mockGetActiveProvider.mockResolvedValue({ id: 'immediate', providerId: 'groq' });
+      mockGetActiveProvider.mockResolvedValue({ id: 'immediate', providerId: 'mimo' });
       mockGetSettings.mockResolvedValue({ activeVoiceId: 'v1' });
       mockGetProvider.mockReturnValue({
         listVoices: vi.fn().mockResolvedValue([{ id: 'v1', name: 'Voice' }]),
@@ -343,7 +343,7 @@ describe('orchestrator', () => {
     it('stops previous playback before starting a new session', async () => {
       mockGetActiveProvider.mockResolvedValue({
         id: 'cfg-1',
-        providerId: 'groq',
+        providerId: 'mimo',
         name: 'Test',
         apiKey: 'key',
       });
@@ -394,7 +394,7 @@ describe('orchestrator', () => {
     it('sets status to loading when starting playback', async () => {
       mockGetActiveProvider.mockResolvedValue({
         id: 'cfg-1',
-        providerId: 'groq',
+        providerId: 'mimo',
         name: 'Test',
         apiKey: 'key',
       });

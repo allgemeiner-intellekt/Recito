@@ -1,3 +1,4 @@
+import { isSupportedProvider } from './provider-support';
 import type { ProviderConfig, AppSettings } from './types';
 import { DEFAULT_SETTINGS } from './constants';
 
@@ -69,7 +70,7 @@ export async function getActiveProvider(): Promise<ProviderConfig | null> {
   const settings = await getSettings();
   if (!settings.activeProviderGroup) return null;
   const providers = await getProviders();
-  return providers.find((p) => getProviderGroupKey(p) === settings.activeProviderGroup) ?? null;
+  return providers.find((p) => isSupportedProvider(p.providerId) && getProviderGroupKey(p) === settings.activeProviderGroup) ?? null;
 }
 
 /**
@@ -79,14 +80,18 @@ export async function getActiveGroupConfigs(): Promise<ProviderConfig[]> {
   const settings = await getSettings();
   if (!settings.activeProviderGroup) return [];
   const providers = await getProviders();
-  return providers.filter((p) => getProviderGroupKey(p) === settings.activeProviderGroup);
+  return providers.filter((p) => isSupportedProvider(p.providerId) && getProviderGroupKey(p) === settings.activeProviderGroup);
 }
 
 /**
  * Set the active provider group.
- * @param groupKey — group key from getProviderGroupKey(), e.g. "openai", "elevenlabs", "custom:https://..."
+ * @param groupKey — group key from getProviderGroupKey(), e.g. "mimo", "openai", "custom:https://..."
  */
 export async function setActiveProviderGroup(groupKey: string, voiceId?: string): Promise<void> {
+  const providers = await getProviders();
+  if (!providers.some((p) => isSupportedProvider(p.providerId) && getProviderGroupKey(p) === groupKey)) {
+    throw new Error('Choose a supported provider in Settings.');
+  }
   const settings = await getSettings();
   settings.activeProviderGroup = groupKey;
   if (voiceId) settings.activeVoiceId = voiceId;
@@ -108,6 +113,13 @@ export async function getSettings(): Promise<AppSettings> {
     }
     delete raw.activeProviderId;
     // Persist the migration
+    await chrome.storage.local.set({ [SETTINGS_KEY]: raw });
+  }
+
+  if (raw.activeProviderGroup && !isSupportedProvider(raw.activeProviderGroup)
+    && !raw.activeProviderGroup.startsWith('custom:')) {
+    raw.activeProviderGroup = null;
+    raw.activeVoiceId = null;
     await chrome.storage.local.set({ [SETTINGS_KEY]: raw });
   }
 

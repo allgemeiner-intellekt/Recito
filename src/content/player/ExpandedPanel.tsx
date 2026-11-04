@@ -1,3 +1,4 @@
+import { isSupportedProvider } from '@shared/provider-support';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { MSG, sendMessage } from '@shared/messages';
 import type { ProviderConfig } from '@shared/types';
@@ -13,7 +14,7 @@ export function ExpandedPanel() {
   useEffect(() => {
     (async () => {
       const [provs, active] = await Promise.all([getProviders(), getActiveProvider()]);
-      setProviders(provs);
+      setProviders(provs.filter((p) => isSupportedProvider(p.providerId)));
       if (active) {
         setActiveGroupKey(getProviderGroupKey(active));
         _setProviderId(active.providerId);
@@ -25,7 +26,7 @@ export function ExpandedPanel() {
     const handler = () => {
       (async () => {
         const [provs, active] = await Promise.all([getProviders(), getActiveProvider()]);
-        setProviders(provs);
+        setProviders(provs.filter((p) => isSupportedProvider(p.providerId)));
         if (active) {
           setActiveGroupKey(getProviderGroupKey(active));
           _setProviderId(active.providerId);

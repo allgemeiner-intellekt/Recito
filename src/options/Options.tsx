@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import type { ProviderConfig, Voice, AppSettings, ProviderUsage, ThemeMode } from '@shared/types';
+import type { ProviderConfig, Voice, AppSettings, ThemeMode } from '@shared/types';
 import { PROVIDER_LIST } from '@providers/registry';
-import { ELEVENLABS_MODELS } from '@providers/elevenlabs';
+import { isSupportedProvider } from '@shared/provider-support';
 import { MIMO_MODELS } from '@providers/mimo';
 import {
   getProviders,
@@ -65,7 +65,6 @@ interface ProviderFormData {
   name: string;
   apiKey: string;
   baseUrl: string;
-  modelId: string;
   customModel: string;
   mimoModel: string;
 }
@@ -74,7 +73,7 @@ const DEFAULT_MIMO_MODEL_ID = MIMO_MODELS[0].modelId;
 const LEGACY_MIMO_MODEL_ID = 'mimo-v2-tts';
 type MimoModelId = (typeof MIMO_MODELS)[number]['modelId'];
 
-const EMPTY_FORM: ProviderFormData = { providerId: 'openai', name: '', apiKey: '', baseUrl: '', modelId: 'eleven_multilingual_v2', customModel: 'tts-1', mimoModel: DEFAULT_MIMO_MODEL_ID };
+const EMPTY_FORM: ProviderFormData = { providerId: 'openai', name: '', apiKey: '', baseUrl: '', customModel: 'tts-1', mimoModel: DEFAULT_MIMO_MODEL_ID };
 
 function nextFormState(current: ProviderFormData, partial: Partial<ProviderFormData>): ProviderFormData {
   return { ...current, ...partial };
@@ -105,9 +104,7 @@ function getFormProviderConfig(
     apiKey: form.apiKey.trim(),
     baseUrl: form.baseUrl.trim() || undefined,
   };
-  if (trimmedProviderId === 'elevenlabs') {
-    config.extraParams = { model_id: form.modelId };
-  } else if (trimmedProviderId === 'custom' && form.customModel.trim()) {
+  if (trimmedProviderId === 'custom' && form.customModel.trim()) {
     config.extraParams = { model: form.customModel.trim() };
   } else if (trimmedProviderId === 'mimo') {
     config.extraParams = { model: form.mimoModel };
@@ -225,32 +222,6 @@ export function Options() {
     return () => clearInterval(interval);
   }, [section]);
 
-  // Poll ElevenLabs usage when on the providers section
-  const [usageMap, setUsageMap] = useState<Record<string, ProviderUsage | { error: string }>>({});
-
-  useEffect(() => {
-    if (section !== 'providers') return;
-
-    const elevenLabsConfigs = providers.filter((p) => p.providerId === 'elevenlabs');
-    if (elevenLabsConfigs.length === 0) return;
-
-    const fetchUsage = () => {
-      elevenLabsConfigs.forEach((config) => {
-        sendMessage<ProviderUsage | { error: string }>({
-          type: MSG.GET_PROVIDER_USAGE,
-          configId: config.id,
-        })
-          .then((result) => {
-            setUsageMap((prev) => ({ ...prev, [config.id]: result }));
-          })
-          .catch(() => {});
-      });
-    };
-    fetchUsage();
-    const interval = setInterval(fetchUsage, 60_000);
-    return () => clearInterval(interval);
-  }, [section, providers]);
-
   // --- Provider CRUD ---
   const openAddForm = () => {
     setEditingId(null);
@@ -266,7 +237,6 @@ export function Options() {
       name: config.name,
       apiKey: config.apiKey,
       baseUrl: config.baseUrl ?? '',
-      modelId: (config.extraParams?.model_id as string) ?? 'eleven_multilingual_v2',
       customModel: (config.extraParams?.model as string) ?? 'tts-1',
       mimoModel: getMimoFormModel(config),
     });
@@ -596,6 +566,8 @@ export function Options() {
                         </span>
                         {isGroupActive ? (
                           <span className="badge">Active</span>
+                        ) : !meta ? (
+                          <span className="badge">Unsupported</span>
                         ) : (
                           <button
                             className="btn btn-sm"
@@ -625,6 +597,13 @@ export function Options() {
                               <div className="card-meta">
                                 {provMeta?.name ?? p.providerId} &middot; Key: {maskKey(p.apiKey)}
                               </div>
+                              {!provMeta && (
+                                <p className="health-info">
+                                  This provider is no longer supported. Its saved key is retained until you delete it.
+                                  Select MiMo or OpenAI, or add a Custom configuration for a service that supports
+                                  the OpenAI speech API. Configurations are not converted automatically.
+                                </p>
+                              )}
                               {healthStatus === 'cooldown' && health?.cooldownUntil && (
                                 <div className="health-info">
                                   Cooling down &mdash; retrying in{' '}
@@ -646,38 +625,9 @@ export function Options() {
                                   </button>
                                 </div>
                               )}
-                              {p.providerId === 'elevenlabs' && (() => {
-                                const usage = usageMap[p.id];
-                                if (!usage) return null;
-                                if ('error' in usage) {
-                                  return <div className="usage-text">{usage.error}</div>;
-                                }
-                                const pct = usage.characterLimit > 0
-                                  ? (usage.characterCount / usage.characterLimit) * 100
-                                  : 0;
-                                const level = pct >= 90 ? 'danger' : pct >= 70 ? 'warn' : 'ok';
-                                const daysUntilReset = Math.max(
-                                  0,
-                                  Math.ceil((usage.nextResetUnix * 1000 - Date.now()) / 86_400_000),
-                                );
-                                return (
-                                  <div className="usage-section">
-                                    <div className="usage-bar">
-                                      <div
-                                        className={`usage-fill usage-fill--${level}`}
-                                        style={{ width: `${Math.min(pct, 100)}%` }}
-                                      />
-                                    </div>
-                                    <div className="usage-text">
-                                      {usage.characterCount.toLocaleString()} / {usage.characterLimit.toLocaleString()} characters
-                                      {' '}&middot; Resets in {daysUntilReset}d
-                                    </div>
-                                  </div>
-                                );
-                              })()}
                             </div>
                             <div className="card-actions">
-                              <button className="btn btn-sm" onClick={() => openEditForm(p)}>
+                              <button disabled={!isSupportedProvider(p.providerId)} className="btn btn-sm" onClick={() => openEditForm(p)}>
                                 Edit
                               </button>
                               <button
@@ -770,26 +720,6 @@ export function Options() {
                       placeholder="sk-..."
                     />
                   </label>
-
-                  {form.providerId === 'elevenlabs' && (
-                    <label className="form-label">
-                      Model
-                      <select
-                        className="form-select"
-                        value={form.modelId}
-                        onChange={(e) => {
-                          setTestResult(null);
-                          setForm(nextFormState(form, { modelId: e.target.value }));
-                        }}
-                      >
-                        {ELEVENLABS_MODELS.map((m) => (
-                          <option key={m.modelId} value={m.modelId}>
-                            {m.label}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                  )}
 
                   {form.providerId === 'mimo' && (
                     <label className="form-label">

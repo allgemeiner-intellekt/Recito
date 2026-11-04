@@ -73,7 +73,7 @@ function StepWelcome({ onNext }: { onNext: () => void }) {
             </svg>
           </div>
           <h3>Bring Your Own Keys</h3>
-          <p>Use OpenAI, ElevenLabs, Groq, or any OpenAI-compatible service</p>
+          <p>Use MiMo, OpenAI, or a custom OpenAI-compatible TTS service</p>
         </div>
 
         <div className="value-card">

@@ -2,7 +2,7 @@
 
 export interface ProviderConfig {
   id: string;
-  providerId: string; // 'openai' | 'elevenlabs' | 'groq' | 'custom'
+  providerId: string; // 'mimo' | 'openai' | 'custom'; stored configs may include retired IDs
   name: string;
   apiKey: string;
   baseUrl?: string;
@@ -141,14 +141,6 @@ export interface AppSettings {
   theme: ThemeMode;
   themeColor: string | null;
   onboardingComplete: boolean;
-}
-
-// === Provider Usage ===
-
-export interface ProviderUsage {
-  characterCount: number;
-  characterLimit: number;
-  nextResetUnix: number;
 }
 
 // === Page Info ===

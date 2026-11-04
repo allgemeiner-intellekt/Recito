@@ -2,24 +2,24 @@ import { describe, expect, it } from 'vitest';
 import { hasLikelyValidApiKeyFormat } from './api-key-format';
 
 describe('API key format guards', () => {
-  it('rejects obviously invalid Groq keys', () => {
+  it('rejects obviously invalid MiMo keys', () => {
     expect(
       hasLikelyValidApiKeyFormat({
-        id: 'groq-short',
-        providerId: 'groq',
-        name: 'Groq',
+        id: 'mimo-short',
+        providerId: 'mimo',
+        name: 'MiMo',
         apiKey: 'ab',
       }),
     ).toBe(false);
   });
 
-  it('accepts likely valid Groq keys', () => {
+  it('accepts likely valid MiMo keys', () => {
     expect(
       hasLikelyValidApiKeyFormat({
-        id: 'groq-valid',
-        providerId: 'groq',
-        name: 'Groq',
-        apiKey: 'gsk_1234567890abcdefghij',
+        id: 'mimo-valid',
+        providerId: 'mimo',
+        name: 'MiMo',
+        apiKey: '1234567890abcdefghij',
       }),
     ).toBe(true);
   });
