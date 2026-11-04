@@ -72,6 +72,41 @@ afterEach(async () => {
 });
 
 describe('MiMo settings compatibility', () => {
+  it('uses the default MiMo model when converting a saved Custom configuration', async () => {
+    provider = {
+      ...provider,
+      providerId: 'custom',
+      name: 'Saved Custom',
+      baseUrl: 'https://compatible.example/v1',
+      extraParams: { model: 'tts-1' },
+    };
+    data['ir-providers'] = [provider];
+    await act(async () => {
+      root.render(React.createElement(Options));
+    });
+    await click('Providers');
+    await click('Edit');
+    const providerType = [...container.querySelectorAll('label')]
+      .find((label) => label.textContent?.trim().startsWith('Provider Type'))!
+      .querySelector('select')!;
+    await act(async () => {
+      providerType.value = 'mimo';
+      providerType.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await click('Save');
+    const saved = (data['ir-providers'] as ProviderConfig[])[0];
+    expect(saved).toEqual({
+      ...provider,
+      providerId: 'mimo',
+      name: mimoProvider.name,
+      baseUrl: undefined,
+      extraParams: { model: 'mimo-v2.5-tts' },
+    });
+    await expect(mimoProvider.listVoices(saved)).resolves.toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: 'Mia' })]),
+    );
+  });
+
   it.each([undefined, {}, { model: 'mimo-v2-tts', retained: true }, { model: 'mimo-v2.5-tts' }])(
     'edits and saves historical official config %j with only v2.5 available',
     async (extraParams) => {

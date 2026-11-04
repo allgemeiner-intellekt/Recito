@@ -229,7 +229,7 @@ export function Options() {
       apiKey: config.apiKey,
       baseUrl: config.baseUrl ?? '',
       customModel: (config.extraParams?.model as string) ?? 'tts-1',
-      mimoModel: resolveMimoModel(config),
+      mimoModel: config.providerId === 'mimo' ? resolveMimoModel(config) : DEFAULT_MIMO_MODEL_ID,
     });
     setTestResult(null);
     setShowForm(true);
