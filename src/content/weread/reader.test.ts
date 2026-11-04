@@ -138,6 +138,29 @@ describe('WeRead chapter reading', () => {
     expect(chapter.runs.find(run => run.text === 'h')).toMatchObject({ spaceBefore: true });
   });
 
+  it.each([
+    ['day,<span> </span>he', 'day, he'],
+    ['day,<span> \n</span><span>\t </span>he', 'day, he'],
+    ['你好，<span> </span>世界。', '你好，世界。'],
+    ['前😀文<span> </span>next', '前😀文 next'],
+  ])('preserves collapsed standalone whitespace in %s', async (html, expected) => {
+    document.querySelector('#preRenderContainer')!.innerHTML = `<p>${html}</p>`;
+    let x = 0;
+    rangeRect.mockImplementation(function(this: Range) {
+      const width = /\s/.test(this.toString()) ? 0 : 21;
+      const rect = { left: x, top: 0, width, height: 30, bottom: 30, right: x + width } as DOMRect;
+      x += width; // Adjacent glyphs leave no layout gap to infer a separator.
+      return rect;
+    });
+    capture();
+    const chapter = await extractWeread();
+    expect(chapter.text).toBe(expected);
+    expect(chapter.runs.some(run => run.spaceBefore)).toBe(true);
+    for (const run of chapter.runs) {
+      expect(chapter.text.slice(run.startOffset, run.endOffset)).toBe(run.text);
+    }
+  });
+
   it('paints the active sentence/character, scrolls once per line, and releases the observer', async () => {
     capture();
     const chapter = await extractWeread();
