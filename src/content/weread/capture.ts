@@ -37,7 +37,8 @@ export function installWereadCapture(): () => void {
             const parent = node.parentElement;
             if (!parent || parent.closest('style, script, noscript, .chapterTitle, [data-wr-id="chapterTitle"]')) continue;
             const text = node.nodeValue ?? '';
-            if (!text.trim()) continue;
+            // Standalone whitespace still carries word boundaries when its
+            // Range collapses; let it update pendingSpace like inline spaces.
             for (let offset = 0; offset < text.length;) {
               const character = String.fromCodePoint(text.codePointAt(offset)!);
               range.setStart(node, offset);
