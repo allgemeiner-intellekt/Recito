@@ -1,6 +1,10 @@
 import { MSG, type ExtensionMessage } from '@shared/messages';
 import {
   startPlayback,
+  retryPlayback,
+  changeVoice,
+  failPlayback,
+  ensureContentScript,
   pausePlayback,
   resumePlayback,
   stopPlayback,
@@ -15,7 +19,8 @@ import {
 import { playbackState } from './playback-state';
 import { getProvider } from '@providers/registry';
 import { getProviders, setActiveProviderGroup } from '@shared/storage';
-import { getAllHealth, clearHealth } from './failover';
+import { ApiError } from '@shared/api-error';
+import { getAllHealth, clearHealth, markFailed } from './failover';
 
 export async function routeMessage(
   message: ExtensionMessage,
@@ -29,7 +34,12 @@ export async function routeMessage(
         const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
         if (tab?.id) {
           try {
-            await startPlayback(tab.id, message.fromSelection);
+            startPlayback(
+              tab.id,
+              message.fromSelection,
+              message.startChunk,
+              message.startOffset,
+            ).catch((err) => failPlayback(err));
             sendResponse({ ok: true });
           } catch (err) {
             sendResponse({ error: err instanceof Error ? err.message : String(err) });
@@ -43,7 +53,7 @@ export async function routeMessage(
       case MSG.START_READING: {
         const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
         if (tab?.id) {
-          startPlayback(tab.id).catch(console.error);
+          startPlayback(tab.id).catch((error) => failPlayback(error));
           sendResponse({ ok: true });
         } else {
           sendResponse({ error: 'No active tab' });
@@ -51,13 +61,21 @@ export async function routeMessage(
         break;
       }
 
+      case MSG.RETRY:
+        retryPlayback().catch((err) => failPlayback(err));
+        sendResponse({ ok: true });
+        break;
+      case MSG.SET_VOICE:
+        changeVoice(message.voiceId).catch((err) => failPlayback(err));
+        sendResponse({ ok: true });
+        break;
       case MSG.PAUSE:
         pausePlayback();
         sendResponse({ ok: true });
         break;
 
       case MSG.RESUME:
-        resumePlayback().catch(console.error);
+        resumePlayback().catch((error) => failPlayback(error));
         sendResponse({ ok: true });
         break;
 
@@ -73,17 +91,17 @@ export async function routeMessage(
       }
 
       case MSG.SKIP_FORWARD:
-        skipForward().catch(console.error);
+        skipForward().catch((error) => failPlayback(error));
         sendResponse({ ok: true });
         break;
 
       case MSG.SKIP_BACKWARD:
-        skipBackward().catch(console.error);
+        skipBackward().catch((error) => failPlayback(error));
         sendResponse({ ok: true });
         break;
 
       case MSG.SEEK_TO_CHUNK:
-        skipToChunk(message.chunkIndex).catch(console.error);
+        skipToChunk(message.chunkIndex).catch((error) => failPlayback(error));
         sendResponse({ ok: true });
         break;
 
@@ -112,8 +130,11 @@ export async function routeMessage(
         break;
       }
 
-      case MSG.CHUNK_COMPLETE:
       case MSG.PLAYBACK_ERROR:
+        failPlayback(new Error(message.error), 'provider', message.chunkIndex);
+        sendResponse({ ok: true });
+        break;
+      case MSG.CHUNK_COMPLETE:
       case MSG.WORD_TIMING: {
         const targetTab = getActiveTab();
         if (targetTab) {
@@ -129,6 +150,7 @@ export async function routeMessage(
       case MSG.GET_PAGE_INFO: {
         const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
         if (tab?.id) {
+          await ensureContentScript(tab.id);
           const response = await chrome.tabs.sendMessage(tab.id, message);
           sendResponse(response);
         } else {
@@ -138,6 +160,26 @@ export async function routeMessage(
       }
 
       // === Provider management — actually execute provider operations ===
+      case MSG.TEST_KEY: {
+        try {
+          const provider = getProvider(message.config.providerId);
+          const voices = await provider.listVoices(message.config);
+          await provider.synthesize(
+            'Recito connection test.',
+            voices[0] ?? { id: 'alloy', name: 'Alloy' },
+            message.config,
+          );
+          clearHealth(message.config.id);
+          sendResponse({ ok: true });
+        } catch (error) {
+          if (error instanceof ApiError) markFailed(message.config.id, error);
+          sendResponse({
+            ok: false,
+            error: error instanceof Error ? error.message.slice(0, 500) : String(error),
+          });
+        }
+        break;
+      }
       case MSG.VALIDATE_KEY: {
         try {
           const provider = getProvider(message.config.providerId);
@@ -184,8 +226,19 @@ export async function routeMessage(
       }
 
       // === Settings ===
+      case MSG.OPEN_SETUP:
+        await chrome.tabs.create({ url: chrome.runtime.getURL('src/onboarding/index.html') });
+        sendResponse({ ok: true });
+        break;
       case MSG.OPEN_OPTIONS: {
-        chrome.runtime.openOptionsPage();
+        if (message.configId)
+          chrome.tabs.create({
+            url:
+              chrome.runtime.getURL('src/options/index.html') +
+              '#key=' +
+              encodeURIComponent(message.configId),
+          });
+        else chrome.runtime.openOptionsPage();
         sendResponse({ ok: true });
         break;
       }

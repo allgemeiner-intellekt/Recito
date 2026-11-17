@@ -79,9 +79,35 @@ export interface SentenceBoundary {
 
 // === Playback Types ===
 
-export type PlaybackStatus = 'idle' | 'loading' | 'playing' | 'paused';
+export type PlaybackStatus = 'idle' | 'loading' | 'playing' | 'paused' | 'error';
+
+export interface PlaybackError {
+  kind: 'no-provider' | 'auth' | 'rate-limited' | 'network' | 'provider' | 'extraction';
+  httpStatus?: number;
+  configNames?: string[];
+  configIds?: string[];
+  retryAt?: number;
+  chunkIndex: number;
+}
+export interface ReadingScope {
+  kind: 'page' | 'selection';
+  wordCount: number;
+}
 
 export interface PlaybackState {
+  error?: PlaybackError;
+  scope?: ReadingScope;
+  excerpt?: string;
+  tabId?: number;
+  providerId?: string;
+  providerGroup?: string;
+  configId?: string;
+  providerName?: string;
+  voiceId?: string;
+  notice?: string;
+  estimatedSeconds?: number;
+  elapsedSeconds?: number;
+  chunkWordCounts?: number[];
   status: PlaybackStatus;
   currentChunkIndex: number;
   totalChunks: number;
@@ -158,6 +184,10 @@ export interface AppSettings {
 // === Page Info ===
 
 export interface PageInfo {
+  scope?: ReadingScope;
+  excerpt?: string;
+  savedChunk?: number;
+  savedTotal?: number;
   wordCount: number;
   title: string;
   isPlaying: boolean;

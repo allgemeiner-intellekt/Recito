@@ -1,3 +1,5 @@
+import { playbackState } from './playback-state';
+import { splitSentences } from '../content/extraction/sentence-splitter';
 import { MSG, sendTabMessage } from '@shared/messages';
 
 interface SimpleWordTiming {
@@ -13,6 +15,10 @@ let currentWords: string[] = [];
 let currentWordIndex = 0;
 let currentRealTimings: SimpleWordTiming[] | null = null;
 let audioDuration = 0;
+let text = '';
+let sentenceExcerpt = '';
+let offsets: number[] = [];
+let sentences: ReturnType<typeof splitSentences> = [];
 // Pre-computed cumulative character fractions for weighted interpolation
 let cumulativeCharFractions: number[] = [];
 
@@ -24,6 +30,10 @@ export function startWordTimingRelay(
 ): void {
   stopWordTimingRelay();
 
+  text = chunkText;
+  sentences = splitSentences(text);
+  offsets = [...text.matchAll(/\S+/g)].map((m) => m.index!);
+  sentenceExcerpt = '';
   currentTabId = tabId;
   currentChunkIndex = chunkIndex;
   currentWords = chunkText.split(/\s+/).filter(Boolean);
@@ -74,6 +84,11 @@ export function onPlaybackProgress(
     audioDuration = duration;
   }
 
+  if (/\p{Script=Han}/u.test(text) && audioDuration > 0) {
+    publishExcerpt(
+      Math.min(text.length - 1, Math.floor((currentTime / audioDuration) * text.length)),
+    );
+  }
   if (currentRealTimings) {
     // Use real timings — advance words whose startTime has been reached
     while (
@@ -81,6 +96,7 @@ export function onPlaybackProgress(
       currentRealTimings[currentWordIndex].startTime <= currentTime
     ) {
       const timing = currentRealTimings[currentWordIndex];
+      updateExcerpt(currentWordIndex);
       sendTabMessage(currentTabId, {
         type: MSG.WORD_TIMING,
         chunkIndex: currentChunkIndex,
@@ -110,6 +126,7 @@ export function onPlaybackProgress(
     while (currentWordIndex <= expectedWordIndex) {
       const startFrac = currentWordIndex > 0 ? cumulativeCharFractions[currentWordIndex - 1] : 0;
       const endFrac = cumulativeCharFractions[currentWordIndex];
+      updateExcerpt(currentWordIndex);
       sendTabMessage(currentTabId, {
         type: MSG.WORD_TIMING,
         chunkIndex: currentChunkIndex,
@@ -120,5 +137,17 @@ export function onPlaybackProgress(
       }).catch(() => {});
       currentWordIndex++;
     }
+  }
+}
+
+function updateExcerpt(wordIndex: number): void {
+  publishExcerpt(offsets[wordIndex] ?? 0);
+}
+function publishExcerpt(offset: number): void {
+  const sentence =
+    sentences.find((s) => offset >= s.startOffset && offset < s.endOffset)?.text ?? text;
+  if (sentence !== sentenceExcerpt) {
+    sentenceExcerpt = sentence;
+    playbackState.update({ excerpt: sentence });
   }
 }

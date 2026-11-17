@@ -18,6 +18,7 @@ export function createExtractionCacheKey(input: {
   fromSelection: boolean;
   selectionText: string | null;
   chunkConfig?: ChunkConfigKey;
+  skipReferences?: boolean;
 }): string {
   const chunkConfigKey = input.chunkConfig
     ? `${input.chunkConfig.minWords}:${input.chunkConfig.maxWords}:${input.chunkConfig.splitThreshold}`
@@ -30,10 +31,11 @@ export function createExtractionCacheKey(input: {
       input.selectionText.length,
       hashTextSample(input.selectionText),
       chunkConfigKey,
+      input.skipReferences === true,
     ].join('|');
   }
 
-  return [input.url, 'document', chunkConfigKey].join('|');
+  return [input.url, 'document', chunkConfigKey, input.skipReferences === true].join('|');
 }
 
 export function createExtractionCacheEntry(input: {
@@ -61,9 +63,7 @@ export function canReuseExtraction(entry: ExtractionCacheEntry | null, key: stri
 }
 
 function hashTextSample(text: string): string {
-  const sample = text.length <= 128
-    ? text
-    : `${text.slice(0, 64)}${text.slice(-64)}`;
+  const sample = text.length <= 128 ? text : `${text.slice(0, 64)}${text.slice(-64)}`;
   let hash = 2166136261;
 
   for (let i = 0; i < sample.length; i++) {

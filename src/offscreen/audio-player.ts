@@ -23,6 +23,7 @@ export class AudioPlayer {
   private next: QueuedChunk | null = null;
   private playbackVersion = 0;
   private queueVersion = 0;
+  private pendingPlay: { version: number; promise: Promise<void> } | null = null;
 
   private getContext(): AudioContext {
     if (!this.ctx) {
@@ -35,6 +36,17 @@ export class AudioPlayer {
   }
 
   async play(audioData: ArrayBuffer, chunkIndex: number, _format: string): Promise<void> {
+    const promise = this.decodeAndPlay(audioData, chunkIndex);
+    const pending = { version: this.playbackVersion, promise };
+    this.pendingPlay = pending;
+    try {
+      await promise;
+    } finally {
+      if (this.pendingPlay === pending) this.pendingPlay = null;
+    }
+  }
+
+  private async decodeAndPlay(audioData: ArrayBuffer, chunkIndex: number): Promise<void> {
     this.stop();
     const version = this.playbackVersion;
     const ctx = this.getContext();
@@ -50,6 +62,14 @@ export class AudioPlayer {
 
   /** Start the next chunk at the current chunk's audio-clock boundary. */
   async scheduleNext(audioData: ArrayBuffer, chunkIndex: number, format: string): Promise<void> {
+    // Prefetch can arrive while the first chunk is resuming its AudioContext or
+    // decoding. It must queue behind that chunk rather than replace its play().
+    const pending = this.pendingPlay;
+    if (pending) {
+      if (pending.version !== this.playbackVersion) return;
+      await pending.promise;
+      if (pending.version !== this.playbackVersion) return;
+    }
     if (!this.currentBuffer) {
       await this.play(audioData, chunkIndex, format);
       return;

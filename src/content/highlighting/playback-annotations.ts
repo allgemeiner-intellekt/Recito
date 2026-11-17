@@ -10,6 +10,7 @@ import { initTextScrubber, destroyTextScrubber } from './text-scrubber';
 interface PlaybackAnnotationCallbacks {
   isActive: () => boolean;
   onSeek: (chunkIndex: number) => void;
+  onOutsideSelection?: (offset: number) => void;
   onInvalidated: () => void;
 }
 
@@ -18,13 +19,29 @@ export class PlaybackAnnotations {
   private highlighter: HighlightManager | WereadHighlighter;
   private scrubber: WereadScrubber | null = null;
   private destroyed = false;
+  private onScroll = () => {
+    if (this.scrollFrame) return;
+    this.scrollFrame = requestAnimationFrame(() => {
+      this.scrollFrame = 0;
+      window.dispatchEvent(
+        new CustomEvent('recito:reading-visibility', {
+          detail: !this.highlighter.isReadingVisible(),
+        }),
+      );
+    });
+  };
+  private scrollFrame = 0;
 
-  constructor(source: Element | WereadChapter, chunks: TextChunk[], settings: ResolvedHighlightSettings,
-    callbacks: PlaybackAnnotationCallbacks) {
+  constructor(
+    source: Element | WereadChapter,
+    chunks: TextChunk[],
+    settings: ResolvedHighlightSettings,
+    callbacks: PlaybackAnnotationCallbacks,
+  ) {
     if (source instanceof Element) {
       this.highlighter = new HighlightManager(settings);
       this.highlighter.init(source);
-      initTextScrubber(this.highlighter, chunks, callbacks.onSeek);
+      initTextScrubber(this.highlighter, chunks, callbacks.onSeek, callbacks.onOutsideSelection);
     } else {
       this.highlighter = new WereadHighlighter(source, settings, () => {
         this.destroy();
@@ -33,17 +50,28 @@ export class PlaybackAnnotations {
       this.scrubber = new WereadScrubber(source, chunks, callbacks.isActive, callbacks.onSeek);
     }
     if (settings.autoScroll) initAutoScroll();
+    window.addEventListener('scroll', this.onScroll, { passive: true, capture: true });
   }
 
-  getFullText(): string { return this.highlighter.getFullText(); }
+  getFullText(): string {
+    return this.highlighter.getFullText();
+  }
 
   highlightProgress(chunk: TextChunk, currentTime: number, duration: number): void {
     // Unspaced Chinese is one whitespace-delimited "word". Estimate a
     // character from the audio position for both DOM and WeRead rendering.
-    if (this.destroyed || !/\p{Script=Han}/u.test(chunk.text)
-      || !Number.isFinite(currentTime) || !Number.isFinite(duration) || duration <= 0) return;
-    let offset = Math.min(chunk.text.length - 1,
-      Math.floor(Math.max(0, currentTime / duration) * chunk.text.length));
+    if (
+      this.destroyed ||
+      !/\p{Script=Han}/u.test(chunk.text) ||
+      !Number.isFinite(currentTime) ||
+      !Number.isFinite(duration) ||
+      duration <= 0
+    )
+      return;
+    let offset = Math.min(
+      chunk.text.length - 1,
+      Math.floor(Math.max(0, currentTime / duration) * chunk.text.length),
+    );
     // DOM offsets use UTF-16; keep supplementary characters intact.
     if (offset > 0 && /[\uDC00-\uDFFF]/.test(chunk.text[offset])) offset--;
     const length = (chunk.text.codePointAt(offset) ?? 0) > 0xffff ? 2 : 1;
@@ -57,20 +85,40 @@ export class PlaybackAnnotations {
     if (start < 0) return;
     // Do not replace the estimated Chinese character with a whole timed span.
     if (!/\p{Script=Han}/u.test(chunk.text)) {
-      this.highlighter.highlightWord(chunk.startOffset + start, chunk.startOffset + start + word.length);
+      this.highlighter.highlightWord(
+        chunk.startOffset + start,
+        chunk.startOffset + start + word.length,
+      );
     }
-    const sentence = splitSentences(chunk.text).find(item => start >= item.startOffset && start < item.endOffset);
-    this.highlighter.highlightSentence(chunk.startOffset + (sentence?.startOffset ?? 0),
-      chunk.startOffset + (sentence?.endOffset ?? chunk.text.length));
+    const sentence = splitSentences(chunk.text).find(
+      (item) => start >= item.startOffset && start < item.endOffset,
+    );
+    this.highlighter.highlightSentence(
+      chunk.startOffset + (sentence?.startOffset ?? 0),
+      chunk.startOffset + (sentence?.endOffset ?? chunk.text.length),
+    );
+    this.onScroll();
   }
 
-  clearAll(): void { this.highlighter.clearAll(); }
+  returnToReading(): void {
+    this.highlighter.returnToReading();
+  }
 
-  updateColors(settings: ResolvedHighlightSettings): void { this.highlighter.updateColors(settings); }
+  clearAll(): void {
+    this.highlighter.clearAll();
+  }
+
+  updateColors(settings: ResolvedHighlightSettings): void {
+    this.highlighter.updateColors(settings);
+    if (settings.autoScroll) initAutoScroll();
+    else destroyAutoScroll();
+  }
 
   destroy(): void {
     if (this.destroyed) return;
     this.destroyed = true;
+    window.removeEventListener('scroll', this.onScroll, true);
+    cancelAnimationFrame(this.scrollFrame);
     this.scrubber?.destroy();
     destroyTextScrubber();
     destroyAutoScroll();

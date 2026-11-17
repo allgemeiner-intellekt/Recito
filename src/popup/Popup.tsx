@@ -1,12 +1,20 @@
-import { isSupportedProvider } from '@shared/provider-support';
-import React, { useState, useEffect, useCallback } from 'react';
+import { PROVIDER_LIST } from '@providers/registry';
+import React, { useEffect, useRef, useState } from 'react';
 import { MSG, sendMessage } from '@shared/messages';
-import type { PlaybackState, ProviderConfig, AppSettings, PageInfo } from '@shared/types';
-import { getProviders, getSettings, saveSettings, getActiveProvider, getProviderGroupKey } from '@shared/storage';
+import type { PageInfo, PlaybackState } from '@shared/types';
 import { useTheme } from '@shared/useTheme';
-import { SpeedSlider } from '@shared/SpeedSlider';
+import {
+  usePreferences,
+  useVoices,
+  useHealth,
+  readyKeyCount,
+  sessionProvider,
+} from '../ui/usePreferences';
+import { Icon } from '../ui/Icon';
+import { ErrorCard, SpeedControl } from '../ui/controls';
+import { formatTime, minutesLeft, readingTimes, progressFraction } from '@shared/playback-copy';
 
-const DEFAULT_PLAYBACK: PlaybackState = {
+const initial: PlaybackState = {
   status: 'idle',
   currentChunkIndex: 0,
   totalChunks: 0,
@@ -19,371 +27,288 @@ const DEFAULT_PLAYBACK: PlaybackState = {
 
 export function Popup() {
   useTheme();
-  const [providers, setProviders] = useState<ProviderConfig[]>([]);
-  const [activeProvider, setActiveProvider] = useState<ProviderConfig | null>(null);
-  const [settings, setSettings] = useState<AppSettings | null>(null);
-  const [playback, setPlayback] = useState<PlaybackState>(DEFAULT_PLAYBACK);
-  const [pageInfo, setPageInfo] = useState<PageInfo | null>(null);
-
-  // Load initial data
+  const prefs = usePreferences();
+  const { settings, active: defaultProvider, providers, update } = prefs;
+  const { health } = useHealth();
+  const [state, setState] = useState(initial);
+  const [info, setInfo] = useState<(PageInfo & { readable?: boolean }) | null>(null);
+  const [tabId, setTabId] = useState<number>();
+  const controlsSession = state.status !== 'idle' && state.tabId === tabId;
+  const active = controlsSession
+    ? sessionProvider(state, providers, defaultProvider)
+    : defaultProvider;
+  const providerId = controlsSession
+    ? (state.providerId ?? active?.providerId ?? null)
+    : (active?.providerId ?? null);
+  const group =
+    controlsSession && state.providerGroup ? state.providerGroup : settings.activeProviderGroup;
+  const { voices } = useVoices(active);
+  const [elsewhereTitle, setElsewhereTitle] = useState('');
+  const [loaded, setLoaded] = useState(false);
+  const main = useRef<HTMLDivElement>(null);
   useEffect(() => {
+    const port = chrome.runtime.connect({ name: 'recito-popup' });
+    const listener = (message: { state?: PlaybackState }) => {
+      if (message.state) setState(message.state);
+    };
+    port.onMessage.addListener(listener);
     (async () => {
-      const [provs, sett, active] = await Promise.all([
-        getProviders(),
-        getSettings(),
-        getActiveProvider(),
-      ]);
-      setProviders(provs.filter((p) => isSupportedProvider(p.providerId)));
-      setSettings(sett);
-      setActiveProvider(active);
-    })();
-  }, []);
-
-  // Poll playback state (visibility-aware)
-  useEffect(() => {
-    const poll = async () => {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      setTabId(tab?.id);
       try {
-        const state = await sendMessage<PlaybackState>({ type: MSG.GET_STATE });
-        if (state && state.status) setPlayback(state);
-      } catch {
-        /* SW not ready */
+        const page = await sendMessage<PageInfo & { error?: string; readable?: boolean }>({
+          type: MSG.GET_PAGE_INFO,
+        });
+        if (!page?.error) setInfo(page);
+      } finally {
+        setLoaded(true);
       }
-    };
-
-    let intervalId: ReturnType<typeof setInterval> | null = null;
-
-    const startPolling = () => {
-      poll();
-      intervalId = setInterval(poll, 500);
-    };
-
-    const stopPolling = () => {
-      if (intervalId !== null) {
-        clearInterval(intervalId);
-        intervalId = null;
-      }
-    };
-
-    const onVisibilityChange = () => {
-      if (document.hidden) {
-        stopPolling();
-      } else {
-        startPolling();
-      }
-    };
-
-    startPolling();
-    document.addEventListener('visibilitychange', onVisibilityChange);
-
+    })().catch(() => setLoaded(true));
     return () => {
-      stopPolling();
-      document.removeEventListener('visibilitychange', onVisibilityChange);
+      port.onMessage.removeListener(listener);
+      port.disconnect();
     };
   }, []);
-
-  // Get page info from active tab
+  const elsewhere = state.status !== 'idle' && state.tabId !== undefined && state.tabId !== tabId;
   useEffect(() => {
-    (async () => {
-      try {
-        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-        if (tab?.id) {
-          const info = await chrome.tabs.sendMessage(tab.id, { type: MSG.GET_PAGE_INFO });
-          if (info) setPageInfo(info as PageInfo);
-        }
-      } catch {
-        /* content script not loaded */
-      }
-    })();
-  }, []);
-
-  // Listen for storage changes
+    if (elsewhere && state.tabId !== undefined)
+      chrome.tabs
+        .get(state.tabId)
+        .then((t) => setElsewhereTitle(t.title ?? 'Another tab'))
+        .catch(() => setElsewhereTitle('Another tab'));
+  }, [elsewhere, state.tabId]);
   useEffect(() => {
-    const handler = () => {
-      (async () => {
-        const [provs, sett, active] = await Promise.all([
-          getProviders(),
-          getSettings(),
-          getActiveProvider(),
-        ]);
-        setProviders(provs.filter((p) => isSupportedProvider(p.providerId)));
-        setSettings(sett);
-        setActiveProvider(active);
-      })();
-    };
-    chrome.storage.onChanged.addListener(handler);
-    return () => chrome.storage.onChanged.removeListener(handler);
-  }, []);
-
-  const openOptions = useCallback(() => {
-    chrome.runtime.openOptionsPage();
-  }, []);
-
-  const handlePlay = useCallback(() => {
-    if (playback.status === 'paused') {
-      sendMessage({ type: MSG.RESUME });
-    } else if (playback.status === 'playing') {
-      sendMessage({ type: MSG.PAUSE });
-    } else {
-      sendMessage({ type: MSG.PLAY });
-    }
-  }, [playback.status]);
-
-  const handleStop = useCallback(() => {
-    sendMessage({ type: MSG.STOP });
-  }, []);
-
-  const handleSkipBack = useCallback(() => {
-    sendMessage({ type: MSG.SKIP_BACKWARD });
-  }, []);
-
-  const handleSkipForward = useCallback(() => {
-    sendMessage({ type: MSG.SKIP_FORWARD });
-  }, []);
-
-  const handleSpeedChange = useCallback(
-    async (speed: number) => {
-      sendMessage({ type: MSG.SET_SPEED, speed });
-      setPlayback((prev) => ({ ...prev, speed }));
-      if (settings) {
-        const updated = { ...settings, playback: { ...settings.playback, defaultSpeed: speed } };
-        await saveSettings(updated);
-        setSettings(updated);
-      }
-    },
-    [settings],
+    if (loaded) main.current?.querySelector<HTMLButtonElement>('[data-primary]')?.focus();
+  }, [loaded, active?.id]);
+  const playingHere = !elsewhere && state.status !== 'idle';
+  const scope = playingHere ? state.scope : info?.scope;
+  const selected = scope?.kind === 'selection';
+  const wordCount = scope?.wordCount ?? info?.wordCount ?? 0;
+  const times = readingTimes(
+    playingHere
+      ? state
+      : {
+          ...initial,
+          currentChunkIndex: info?.savedChunk ?? 0,
+          totalChunks: info?.savedTotal ?? 0,
+          scope,
+          speed: settings.playback.defaultSpeed,
+        },
   );
-
-  const handleVolumeChange = useCallback(
-    async (volume: number) => {
-      sendMessage({ type: MSG.SET_VOLUME, volume });
-      setPlayback((prev) => ({ ...prev, volume }));
-      if (settings) {
-        const updated = {
-          ...settings,
-          playback: { ...settings.playback, defaultVolume: volume },
-        };
-        await saveSettings(updated);
-        setSettings(updated);
-      }
-    },
-    [settings],
-  );
-
-  const handleProviderChange = useCallback(
-    (e: React.ChangeEvent<HTMLSelectElement>) => {
-      const groupKey = e.target.value;
-      const prov = providers.find((p) => getProviderGroupKey(p) === groupKey);
-      if (prov) {
-        sendMessage({ type: MSG.SET_ACTIVE_PROVIDER, groupKey });
-        setActiveProvider(prov);
-      }
-    },
-    [providers],
-  );
-
-  const speed = playback.speed ?? settings?.playback.defaultSpeed ?? 1;
-  const volume = playback.volume ?? settings?.playback.defaultVolume ?? 1;
-  const isPlaying = playback.status === 'playing';
-  const isPaused = playback.status === 'paused';
-  const isActive = isPlaying || isPaused;
-
-  const truncate = (s: string, max: number) =>
-    s.length > max ? s.slice(0, max - 1) + '\u2026' : s;
-
+  const start = (fromSelection = true, startChunk?: number) => {
+    void sendMessage({ type: MSG.PLAY, fromSelection, startChunk });
+  };
+  const setup = () =>
+    chrome.tabs.create({ url: chrome.runtime.getURL('src/onboarding/index.html') });
+  const readable = info && info.readable !== false && info.wordCount > 0;
+  const speed = playingHere ? state.speed : settings.playback.defaultSpeed;
   return (
-    <div className="popup">
-      {/* Header */}
-      <header className="popup-header">
-        <h1 className="popup-title">Recito</h1>
+    <div className="pp">
+      <header className="pp-head">
+        <span className="wm">Recito</span>
         <button
           className="icon-btn"
-          onClick={openOptions}
-          title="Settings"
-          aria-label="Open settings"
+          aria-label="Settings"
+          onClick={() => sendMessage({ type: MSG.OPEN_OPTIONS })}
         >
-          <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-            <path
-              d="M10 13a3 3 0 100-6 3 3 0 000 6z"
-              stroke="currentColor"
-              strokeWidth="1.5"
-            />
-            <path
-              d="M16.5 10a6.5 6.5 0 01-.4 2.2l1.5 1.2-1.2 2-1.8-.6a6.5 6.5 0 01-1.9 1.1l-.3 1.9h-2.4l-.3-1.9a6.5 6.5 0 01-1.9-1.1l-1.8.6-1.2-2 1.5-1.2A6.5 6.5 0 013.5 10c0-.8.1-1.5.4-2.2L2.4 6.6l1.2-2 1.8.6A6.5 6.5 0 017.3 4.1L7.6 2.2H10l.3 1.9a6.5 6.5 0 011.9 1.1l1.8-.6 1.2 2-1.5 1.2c.3.7.4 1.4.4 2.2z"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              strokeLinejoin="round"
-            />
-          </svg>
+          <Icon name="sliders" />
         </button>
       </header>
-
-      {/* Provider Selector */}
-      <section className="popup-section">
-        {providers.length === 0 ? (
-          <button className="btn btn-primary full-width" onClick={openOptions}>
-            Add a provider to get started
-          </button>
-        ) : (
-          <select
-            className="provider-select"
-            value={activeProvider ? getProviderGroupKey(activeProvider) : ''}
-            onChange={handleProviderChange}
-            aria-label="Select TTS provider"
-          >
-            <option value="" disabled>
-              Select a provider
-            </option>
-            {(() => {
-              const seen = new Set<string>();
-              return providers
-                .map((p) => {
-                  const key = getProviderGroupKey(p);
-                  if (seen.has(key)) return null;
-                  seen.add(key);
-                  const count = providers.filter((q) => getProviderGroupKey(q) === key).length;
-                  const label = count > 1 ? `${p.name} (${count} keys)` : p.name;
-                  return (
-                    <option key={key} value={key}>
-                      {label}
-                    </option>
-                  );
-                })
-                .filter(Boolean);
-            })()}
-          </select>
-        )}
-      </section>
-
-      {/* Transport Controls */}
-      <section className="popup-section transport">
-        <button
-          className="transport-btn"
-          onClick={handleSkipBack}
-          title="Skip backward"
-          aria-label="Skip backward"
-          disabled={!isActive}
-        >
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M6 6h2v12H6V6zm3.5 6l8.5 6V6l-8.5 6z" />
-          </svg>
-        </button>
-        <button
-          className={`play-btn ${isPlaying ? 'playing' : ''}`}
-          onClick={handlePlay}
-          title={isPlaying ? 'Pause' : 'Play'}
-          aria-label={isPlaying ? 'Pause' : 'Play'}
-          disabled={!activeProvider}
-        >
-          {isPlaying ? (
-            <svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z" />
-            </svg>
-          ) : (
-            <svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M8 5v14l11-7L8 5z" />
-            </svg>
-          )}
-        </button>
-        <button
-          className="transport-btn"
-          onClick={handleSkipForward}
-          title="Skip forward"
-          aria-label="Skip forward"
-          disabled={!isActive}
-        >
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M6 18l8.5-6L6 6v12zm10-12v12h2V6h-2z" />
-          </svg>
-        </button>
-        <button
-          className="transport-btn stop-btn"
-          onClick={handleStop}
-          title="Stop"
-          aria-label="Stop"
-          disabled={!isActive}
-        >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-            <rect x="6" y="6" width="12" height="12" rx="2" />
-          </svg>
-        </button>
-      </section>
-
-      {/* Speed Control */}
-      <section className="popup-section">
-        <SpeedSlider
-          value={speed}
-          onChange={handleSpeedChange}
-          providerId={activeProvider?.providerId ?? null}
-          variant="popup"
-        />
-      </section>
-
-      {/* Volume Control */}
-      <section className="popup-section">
-        <div className="control-row">
-          <span className="volume-icon" aria-hidden="true">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3A4.5 4.5 0 0014 8.5v7a4.47 4.47 0 002.5-3.5z" />
-            </svg>
-          </span>
-          <input
-            type="range"
-            className="slider volume-slider"
-            min={0}
-            max={1}
-            step={0.05}
-            value={volume}
-            onChange={(e) => handleVolumeChange(parseFloat(e.target.value))}
-            aria-label="Volume"
-            style={{ '--fill': `${volume * 100}%` } as React.CSSProperties}
-          />
-          <span className="control-value volume-value">{Math.round(volume * 100)}%</span>
-        </div>
-      </section>
-
-      {/* Page Info */}
-      {pageInfo && (
-        <section className="popup-section page-info">
-          <div className="page-title" title={pageInfo.title}>
-            {truncate(pageInfo.title || 'Untitled page', 50)}
+      {readable && (
+        <div className="pp-page">
+          <div className="pp-scope">
+            <span className="pp-chip">{selected ? 'Selected text' : 'Whole page'}</span>
+            <span className="pp-meta">
+              {wordCount.toLocaleString()} words · ~{Math.max(1, Math.ceil(times.total / 60))} min
+            </span>
           </div>
-          <div className="page-meta">
-            <span>{pageInfo.wordCount.toLocaleString()} words</span>
-            {playback.totalChunks > 0 && (
-              <span>
-                Segment {playback.currentChunkIndex + 1} / {playback.totalChunks}
-              </span>
+          <p className="pp-excerpt">
+            {playingHere ? (state.excerpt ?? info.excerpt) : info.excerpt}
+          </p>
+          {playingHere && (
+            <>
+              <div
+                className="bar"
+                style={{ '--p': progressFraction(state) } as React.CSSProperties}
+              />
+              <div className="pp-times">
+                <span>{formatTime(times.elapsed)}</span>
+                <span>−{formatTime(times.remaining)}</span>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+      <div ref={main} className="pp-main">
+        {!loaded ? (
+          <button className="btn lg block" disabled>
+            Finding readable text…
+          </button>
+        ) : !elsewhere && state.status === 'error' && state.error ? (
+          <ErrorCard error={state.error} providerName={state.providerName} />
+        ) : !active && !playingHere ? (
+          <div className="pp-empty">
+            <h3>A voice for your reading</h3>
+            <p>Connect your own provider to start listening.</p>
+            <button data-primary className="btn primary block lg" onClick={setup}>
+              Set up Recito
+            </button>
+          </div>
+        ) : elsewhere ? (
+          <div className="pp-empty">
+            <h3>Reading in another tab</h3>
+            <p>{elsewhereTitle}</p>
+            <button
+              data-primary
+              className="btn primary block"
+              onClick={() =>
+                chrome.tabs.update(state.tabId!, { active: true }).then(async (tab) => {
+                  if (tab.windowId !== undefined)
+                    await chrome.windows.update(tab.windowId, { focused: true });
+                  window.close();
+                })
+              }
+            >
+              Go to that tab
+            </button>
+            {readable && (
+              <p className="pp-sub">
+                <button className="link" onClick={() => start()}>
+                  Read this page instead
+                </button>
+              </p>
             )}
           </div>
-          {playback.totalChunks > 0 && (
-            <div className="reading-progress">
-              <div
-                className="reading-progress-fill"
-                style={{ width: `${((playback.currentChunkIndex + playback.chunkProgress) / playback.totalChunks) * 100}%` }}
-              />
-            </div>
-          )}
-        </section>
+        ) : !readable ? (
+          <div className="pp-empty">
+            <h3>This page can't be read</h3>
+            <p>
+              Chrome doesn't let extensions read some pages. Try an article, email, or a selected
+              passage.
+            </p>
+            <button data-primary className="btn" onClick={() => window.close()}>
+              Got it
+            </button>
+          </div>
+        ) : state.status === 'loading' ? (
+          <button data-primary className="btn primary lg block" disabled>
+            <span className="spin" />
+            Preparing your voice…
+          </button>
+        ) : state.status === 'playing' || state.status === 'paused' ? (
+          <div className="pp-transport">
+            <button
+              className="icon-btn pp-side"
+              aria-label="Skip back"
+              onClick={() => sendMessage({ type: MSG.SKIP_BACKWARD })}
+            >
+              <Icon name="back" />
+            </button>
+            <button
+              data-primary
+              className="pp-big"
+              aria-label={state.status === 'playing' ? 'Pause' : 'Resume'}
+              onClick={() =>
+                sendMessage({ type: state.status === 'playing' ? MSG.PAUSE : MSG.RESUME })
+              }
+            >
+              <Icon name={state.status === 'playing' ? 'pause' : 'play'} size={24} />
+            </button>
+            <button
+              className="icon-btn pp-side"
+              aria-label="Skip forward"
+              onClick={() => sendMessage({ type: MSG.SKIP_FORWARD })}
+            >
+              <Icon name="fwd" />
+            </button>
+          </div>
+        ) : (
+          <>
+            <button
+              data-primary
+              className="btn primary lg block"
+              onClick={() => start(true, info?.savedChunk)}
+            >
+              <Icon name="play" />
+              {info?.savedChunk
+                ? `Resume · ${minutesLeft(times.remaining)}`
+                : selected
+                  ? 'Listen to selection'
+                  : 'Listen'}
+            </button>
+            {selected && (
+              <p className="pp-sub">
+                <button className="link" onClick={() => start(false, 0)}>
+                  Read the whole page instead
+                </button>
+              </p>
+            )}
+            {!!info?.savedChunk && (
+              <p className="pp-sub">
+                <button className="link" onClick={() => start(true, 0)}>
+                  Start from the top
+                </button>
+              </p>
+            )}
+          </>
+        )}
+      </div>
+      {state.notice && !elsewhere && (
+        <div className="callout" role="status">
+          {state.notice}
+        </div>
       )}
-
-      {/* Footer */}
-      <footer className="popup-footer">
-        <button className="footer-btn" onClick={openOptions} aria-label="Open settings">
-          <svg width="14" height="14" viewBox="0 0 20 20" fill="none">
-            <path
-              d="M10 13a3 3 0 100-6 3 3 0 000 6z"
-              stroke="currentColor"
-              strokeWidth="1.5"
+      {readable && (active || playingHere) && (
+        <div className="pp-rows">
+          <div className="pp-row">
+            <label htmlFor="popup-voice">Voice</label>
+            <select
+              className="sel"
+              id="popup-voice"
+              disabled={!active}
+              value={
+                (playingHere ? state.voiceId : undefined) ??
+                settings.activeVoiceId ??
+                voices[0]?.id ??
+                ''
+              }
+              onChange={(e) =>
+                playingHere
+                  ? sendMessage({ type: MSG.SET_VOICE, voiceId: e.target.value })
+                  : update({ activeVoiceId: e.target.value })
+              }
+            >
+              {voices.map((v) => (
+                <option key={v.id} value={v.id}>
+                  {v.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="pp-row">
+            <span>Speed</span>
+            <SpeedControl
+              speed={speed}
+              providerId={providerId}
+              onChange={(n) =>
+                playingHere
+                  ? void sendMessage({ type: MSG.SET_SPEED, speed: n })
+                  : void update({ playback: { ...settings.playback, defaultSpeed: n } })
+              }
             />
-            <path
-              d="M16.5 10a6.5 6.5 0 01-.4 2.2l1.5 1.2-1.2 2-1.8-.6a6.5 6.5 0 01-1.9 1.1l-.3 1.9h-2.4l-.3-1.9a6.5 6.5 0 01-1.9-1.1l-1.8.6-1.2-2 1.5-1.2A6.5 6.5 0 013.5 10c0-.8.1-1.5.4-2.2L2.4 6.6l1.2-2 1.8.6A6.5 6.5 0 017.3 4.1L7.6 2.2H10l.3 1.9a6.5 6.5 0 011.9 1.1l1.8-.6 1.2 2-1.5 1.2c.3.7.4 1.4.4 2.2z"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              strokeLinejoin="round"
-            />
-          </svg>
-          Settings
-        </button>
+          </div>
+          {providerId === 'mimo' && (
+            <div className="rp-hint">Xiaomi MiMo does not support speed control.</div>
+          )}
+        </div>
+      )}
+      <footer className="pp-foot">
+        <span>
+          {active || playingHere
+            ? `${(controlsSession ? state.providerName : undefined) ?? PROVIDER_LIST.find((p) => p.id === active?.providerId)?.name ?? providerId} · ${readyKeyCount(providers, group, health)} keys ready`
+            : 'Your keys stay in this browser'}
+        </span>
+        <span>Alt Shift Space</span>
       </footer>
     </div>
   );

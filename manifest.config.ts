@@ -3,7 +3,8 @@ import { defineManifest } from '@crxjs/vite-plugin';
 export default defineManifest({
   manifest_version: 3,
   name: 'Recito',
-  description: 'Open-source TTS with BYOK support — bring your own OpenAI, ElevenLabs, Groq, or custom provider',
+  description:
+    'Read along with Xiaomi MiMo, OpenAI, or custom OpenAI-compatible text-to-speech. Bring your own key.',
   version: '1.0.0',
   icons: {
     '16': 'public/icons/icon-16.png',
@@ -29,6 +30,7 @@ export default defineManifest({
     },
   ],
   action: {
+    default_popup: 'src/popup/index.html',
     default_icon: {
       '16': 'public/icons/icon-16.png',
       '48': 'public/icons/icon-48.png',

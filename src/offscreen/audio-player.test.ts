@@ -43,7 +43,10 @@ describe('AudioPlayer', () => {
     vi.useFakeTimers();
     ctx = new MockContext();
     sendMessage = vi.fn().mockResolvedValue(undefined);
-    vi.stubGlobal('AudioContext', vi.fn(() => ctx));
+    vi.stubGlobal(
+      'AudioContext',
+      vi.fn(() => ctx),
+    );
     vi.stubGlobal('chrome', { runtime: { sendMessage } });
     player = new AudioPlayer();
   });
@@ -114,7 +117,12 @@ describe('AudioPlayer', () => {
   it('keeps a chunk decoded during a pause queued until resume', async () => {
     await player.play(data, 0, 'mp3');
     let finishDecode!: (value: AudioBuffer) => void;
-    ctx.decodeAudioData.mockImplementationOnce(() => new Promise((resolve) => { finishDecode = resolve; }));
+    ctx.decodeAudioData.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishDecode = resolve;
+        }),
+    );
     const scheduled = player.scheduleNext(data, 1, 'mp3');
     ctx.currentTime = 3;
     player.pause();
@@ -129,7 +137,12 @@ describe('AudioPlayer', () => {
   it('starts a queued chunk if decoding finishes after the current chunk ends', async () => {
     await player.play(data, 0, 'mp3');
     let finishDecode!: (value: AudioBuffer) => void;
-    ctx.decodeAudioData.mockImplementationOnce(() => new Promise((resolve) => { finishDecode = resolve; }));
+    ctx.decodeAudioData.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishDecode = resolve;
+        }),
+    );
     const scheduled = player.scheduleNext(data, 1, 'mp3');
     ctx.currentTime = 10;
     ctx.sources[0].end();
@@ -141,23 +154,36 @@ describe('AudioPlayer', () => {
     expect(sendMessage).toHaveBeenLastCalledWith({ type: MSG.CHUNK_COMPLETE, chunkIndex: 1 });
   });
 
-  it.each(['play', 'scheduleNext'] as const)('discards pending %s decoding after stop', async (operation) => {
-    if (operation === 'scheduleNext') await player.play(data, 0, 'mp3');
-    let finishDecode!: (value: AudioBuffer) => void;
-    ctx.decodeAudioData.mockImplementationOnce(() => new Promise((resolve) => { finishDecode = resolve; }));
-    const pending = player[operation](data, 1, 'mp3');
-    player.stop();
-    finishDecode(buffer());
-    await pending;
-    expect(ctx.sources).toHaveLength(operation === 'play' ? 0 : 1);
-    expect(player.getDuration()).toBe(0);
-    expect(vi.getTimerCount()).toBe(0);
-  });
+  it.each(['play', 'scheduleNext'] as const)(
+    'discards pending %s decoding after stop',
+    async (operation) => {
+      if (operation === 'scheduleNext') await player.play(data, 0, 'mp3');
+      let finishDecode!: (value: AudioBuffer) => void;
+      ctx.decodeAudioData.mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            finishDecode = resolve;
+          }),
+      );
+      const pending = player[operation](data, 1, 'mp3');
+      player.stop();
+      finishDecode(buffer());
+      await pending;
+      expect(ctx.sources).toHaveLength(operation === 'play' ? 0 : 1);
+      expect(player.getDuration()).toBe(0);
+      expect(vi.getTimerCount()).toBe(0);
+    },
+  );
 
   it('discards an older queued decode when a newer chunk replaces it', async () => {
     await player.play(data, 0, 'mp3');
     let finishDecode!: (value: AudioBuffer) => void;
-    ctx.decodeAudioData.mockImplementationOnce(() => new Promise((resolve) => { finishDecode = resolve; }));
+    ctx.decodeAudioData.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishDecode = resolve;
+        }),
+    );
     const stale = player.scheduleNext(data, 1, 'mp3');
     await player.scheduleNext(data, 2, 'mp3');
     finishDecode(buffer(99));
@@ -167,5 +193,26 @@ describe('AudioPlayer', () => {
     ctx.sources[0].end();
     ctx.sources[1].end();
     expect(sendMessage).toHaveBeenLastCalledWith({ type: MSG.CHUNK_COMPLETE, chunkIndex: 2 });
+  });
+  it('queues an early prefetch behind the first chunk while decoding is pending', async () => {
+    let finish!: (value: AudioBuffer) => void;
+    ctx.decodeAudioData.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const first = player.play(data, 0, 'mp3');
+    const next = player.scheduleNext(data, 1, 'mp3');
+    finish(buffer(10));
+    await first;
+    await next;
+    expect(ctx.sources).toHaveLength(2);
+    ctx.currentTime = 1;
+    await vi.advanceTimersByTimeAsync(100);
+    expect(sendMessage).toHaveBeenLastCalledWith(
+      expect.objectContaining({ type: MSG.PLAYBACK_PROGRESS, chunkIndex: 0 }),
+    );
+    expect(ctx.sources[1].start).toHaveBeenCalledWith(10);
   });
 });

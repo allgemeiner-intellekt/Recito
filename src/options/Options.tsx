@@ -1,958 +1,631 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import type { ProviderConfig, Voice, AppSettings, ThemeMode } from '@shared/types';
-import { PROVIDER_LIST } from '@providers/registry';
+import React, { useEffect, useRef, useState } from 'react';
+import type { AppSettings, ProviderConfig } from '@shared/types';
 import { isSupportedProvider } from '@shared/provider-support';
-import { MIMO_MODELS } from '@providers/mimo';
-import { isOfficialMimoEndpoint, normalizeMimoConfig, resolveMimoModel } from '@shared/mimo-config';
+import { PROVIDER_LIST } from '@providers/registry';
 import {
-  getProviders,
-  saveProvider,
   deleteProvider,
-  getSettings,
-  saveSettings,
-  setActiveProviderGroup,
   getProviderGroupKey,
   maskKey,
-  generateId,
+  saveSettings,
+  getSettings,
 } from '@shared/storage';
 import { DEFAULT_SETTINGS } from '@shared/constants';
 import { INKS, normalizeSettings } from '@shared/settings-model';
-import { SpeedSlider } from '@shared/SpeedSlider';
 import { MSG, sendMessage } from '@shared/messages';
 import { useTheme } from '@shared/useTheme';
-import type { ConfigHealth } from '../background/failover';
+import { usePreferences, useHealth, readyKeyCount } from '../ui/usePreferences';
+import { VoiceGrid } from '../ui/VoiceGrid';
+import { ProviderForm } from '../ui/ProviderForm';
+import { Icon } from '../ui/Icon';
+import { SpeedControl } from '../ui/controls';
 
-type Section = 'appearance' | 'providers' | 'voices' | 'playback' | 'hotkeys' | 'advanced';
-
-// Inline SVG icon paths for nav (16x16, stroke-based)
-const NAV_ICONS: Record<Section, string> = {
-  appearance: 'M12 3a6 6 0 00-6 6c0 7 6 9 6 9s6-2 6-9a6 6 0 00-6-6z',
-  providers: 'M7 11l5-5m0 0v4m0-4H8M21 12a9 9 0 11-18 0 9 9 0 0118 0z',
-  voices: 'M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3zm-7 8v1a7 7 0 0014 0v-1m-7 8v4',
-  playback: 'M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z',
-  hotkeys: 'M6 13h12M6 17h12M6 9h12M4 5h16a2 2 0 012 2v10a2 2 0 01-2 2H4a2 2 0 01-2-2V7a2 2 0 012-2z',
-  advanced: 'M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.573-1.066zM15 12a3 3 0 11-6 0 3 3 0 016 0z',
-};
-
-const NAV_ITEMS: { id: Section; label: string }[] = [
-  { id: 'appearance', label: 'Appearance' },
-  { id: 'providers', label: 'Providers' },
-  { id: 'voices', label: 'Voices' },
-  { id: 'playback', label: 'Playback' },
-  { id: 'hotkeys', label: 'Hotkeys' },
-  { id: 'advanced', label: 'Advanced' },
-];
-
-// --- Modal for Add/Edit Provider ---
-interface ProviderFormData {
-  providerId: string;
-  name: string;
-  apiKey: string;
-  baseUrl: string;
-  customModel: string;
-  mimoModel: string;
+const sections = [
+  ['voice', 'Voice & keys', 'wave'],
+  ['look', 'Appearance', 'lines'],
+  ['play', 'Playback', 'circleplay'],
+  ['keys', 'Shortcuts', 'kbd'],
+  ['data', 'Data', 'data'],
+] as const;
+function Row({
+  title,
+  detail,
+  children,
+}: {
+  title: string;
+  detail?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="row">
+      <div className="t">
+        <b>{title}</b>
+        {detail && <small>{detail}</small>}
+      </div>
+      <div className="ctl">{children}</div>
+    </div>
+  );
 }
-
-const DEFAULT_MIMO_MODEL_ID = MIMO_MODELS[0].modelId;
-const EMPTY_FORM: ProviderFormData = { providerId: 'openai', name: '', apiKey: '', baseUrl: '', customModel: 'tts-1', mimoModel: DEFAULT_MIMO_MODEL_ID };
-
-function nextFormState(current: ProviderFormData, partial: Partial<ProviderFormData>): ProviderFormData {
-  return { ...current, ...partial };
+function Segment<T extends string>({
+  label,
+  values,
+  value,
+  onChange,
+}: {
+  label: string;
+  values: readonly (readonly [T, string])[];
+  value: T;
+  onChange: (v: T) => void;
+}) {
+  return (
+    <div className="seg" role="group" aria-label={label}>
+      {values.map(([id, title]) => (
+        <button key={id} aria-pressed={value === id} onClick={() => onChange(id)}>
+          {title}
+        </button>
+      ))}
+    </div>
+  );
 }
-
-function getFormProviderConfig(
-  form: ProviderFormData,
-  editingId: string | null,
-  existing?: ProviderConfig,
-): ProviderConfig {
-  const trimmedProviderId = form.providerId.trim();
-  const trimmedName = form.name.trim();
-  const config: ProviderConfig = {
-    id: editingId ?? generateId(),
-    providerId: trimmedProviderId,
-    name: trimmedName || PROVIDER_LIST.find((p) => p.id === trimmedProviderId)?.name || trimmedProviderId,
-    apiKey: form.apiKey.trim(),
-    baseUrl: form.baseUrl.trim() || undefined,
-  };
-  if (trimmedProviderId === 'custom' && form.customModel.trim()) {
-    config.extraParams = { model: form.customModel.trim() };
-  } else if (trimmedProviderId === 'mimo') {
-    config.extraParams = {
-      ...(existing?.providerId === 'mimo' ? existing.extraParams : undefined),
-      model: form.mimoModel,
-    };
-  }
-  return normalizeMimoConfig(config);
-}
-
-function describeVoiceLoadError(error: unknown): string {
-  if (error instanceof Error && error.message) {
-    return error.message;
-  }
-  if (typeof error === 'string' && error.trim()) {
-    return error;
-  }
-  if (error && typeof error === 'object') {
-    try {
-      const serialized = JSON.stringify(error);
-      if (serialized && serialized !== '{}') {
-        return serialized;
-      }
-    } catch {
-      // Fall back to a generic string below.
-    }
-  }
-  return 'Failed to load voices (no response from background service).';
-}
-
 export function Options() {
   useTheme();
-  const [section, setSection] = useState<Section>('appearance');
-  const [providers, setProviders] = useState<ProviderConfig[]>([]);
-  const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
-  const [voices, setVoices] = useState<Voice[]>([]);
-  const [voicesLoading, setVoicesLoading] = useState(false);
-  const [voicesError, setVoicesError] = useState('');
-
-  // Provider form state
-  const [showForm, setShowForm] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [form, setForm] = useState<ProviderFormData>(EMPTY_FORM);
-  const [testResult, setTestResult] = useState<string | null>(null);
-  const [testing, setTesting] = useState(false);
-
-  // Health state
-  const [healthMap, setHealthMap] = useState<Record<string, ConfigHealth>>({});
-
-  // Confirm reset
-  const [confirmReset, setConfirmReset] = useState(false);
-  const requiresBaseUrl = form.providerId === 'custom';
-  const resolvedFormMimoModel = resolveMimoModel({ baseUrl: form.baseUrl, extraParams: { model: form.mimoModel } });
-  const canTestConnection = Boolean(form.apiKey.trim() && (!requiresBaseUrl || form.baseUrl.trim()));
-  const canSaveProvider = Boolean(form.apiKey.trim() && (!requiresBaseUrl || form.baseUrl.trim()));
-
-  // Load data
-  const loadData = useCallback(async () => {
-    const [provs, sett] = await Promise.all([getProviders(), getSettings()]);
-    setProviders(provs);
-    setSettings(sett);
+  const { settings, providers, active, update, refresh, saved } = usePreferences();
+  const { health, now } = useHealth();
+  const [section, setSection] = useState('voice');
+  const [editing, setEditing] = useState<ProviderConfig | null | undefined>();
+  const [remove, setRemove] = useState<string | null>(null);
+  const [reset, setReset] = useState(false);
+  const [message, setMessage] = useState('');
+  const [testing, setTesting] = useState<string>();
+  const [flash, setFlash] = useState('');
+  const dialog = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    const key = new URLSearchParams(location.hash.slice(1)).get('key');
+    if (key) {
+      setSection('voice');
+      setFlash(key);
+      const timer = setTimeout(() => setFlash(''), 2500);
+      return () => clearTimeout(timer);
+    }
   }, []);
-
   useEffect(() => {
-    loadData();
-  }, [loadData]);
-
-  // Listen for storage changes
-  useEffect(() => {
-    const handler = () => {
-      loadData();
-    };
-    chrome.storage.onChanged.addListener(handler);
-    return () => chrome.storage.onChanged.removeListener(handler);
-  }, [loadData]);
-
-  // Fetch voices when section is voices — use the first config in the active group
-  useEffect(() => {
-    if (section !== 'voices' || !settings.activeProviderGroup) return;
-    const activeConfig = providers.find(
-      (p) => getProviderGroupKey(p) === settings.activeProviderGroup,
-    );
-    if (!activeConfig) return;
-
-    setVoicesLoading(true);
-    setVoicesError('');
-    sendMessage<Voice[] | { error?: string }>({ type: MSG.LIST_VOICES, providerId: activeConfig.id })
-      .then((response) => {
-        if (Array.isArray(response)) {
-          setVoices(response);
-          return;
-        }
-
-        const errorMessage =
-          response && typeof response === 'object' && 'error' in response
-            ? response.error
-            : undefined;
-        setVoices([]);
-        setVoicesError(describeVoiceLoadError(errorMessage ?? response));
-      })
-      .catch((err: unknown) => {
-        setVoicesError(describeVoiceLoadError(err));
-        setVoices([]);
-      })
-      .finally(() => setVoicesLoading(false));
-  }, [section, settings.activeProviderGroup, providers]);
-
-  // Poll provider health when on the providers section
-  useEffect(() => {
-    if (section !== 'providers') return;
-
-    const fetchHealth = () => {
-      sendMessage<Record<string, ConfigHealth>>({ type: MSG.GET_PROVIDER_HEALTH })
-        .then(setHealthMap)
-        .catch(() => {});
-    };
-    fetchHealth();
-    const interval = setInterval(fetchHealth, 10_000);
-    return () => clearInterval(interval);
-  }, [section]);
-
-  // --- Provider CRUD ---
-  const openAddForm = () => {
-    setEditingId(null);
-    setForm(EMPTY_FORM);
-    setTestResult(null);
-    setShowForm(true);
-  };
-
-  const openEditForm = (config: ProviderConfig) => {
-    setEditingId(config.id);
-    setForm({
-      providerId: config.providerId,
-      name: config.name,
-      apiKey: config.apiKey,
-      baseUrl: config.baseUrl ?? '',
-      customModel: (config.extraParams?.model as string) ?? 'tts-1',
-      mimoModel: config.providerId === 'mimo' ? resolveMimoModel(config) : DEFAULT_MIMO_MODEL_ID,
-    });
-    setTestResult(null);
-    setShowForm(true);
-  };
-
-  const handleSaveProvider = async () => {
-    const config = getFormProviderConfig(form, editingId, providers.find((provider) => provider.id === editingId));
-    await saveProvider(config);
-
-    // If first provider, set its group as active
-    if (providers.length === 0) {
-      await setActiveProviderGroup(getProviderGroupKey(config));
-    }
-    setShowForm(false);
-    await loadData();
-  };
-
-  const handleDeleteProvider = async (id: string) => {
-    await deleteProvider(id);
-    await loadData();
-  };
-
-  const handleResetHealth = async (configId: string) => {
-    await sendMessage({ type: MSG.RESET_PROVIDER_HEALTH, configId } as never);
-    setHealthMap((prev) => {
-      const next = { ...prev };
-      delete next[configId];
-      return next;
-    });
-  };
-
-  const handleTestConnection = async () => {
-    if (requiresBaseUrl && !form.baseUrl.trim()) {
-      setTestResult('Base URL is required for a custom provider.');
-      return;
-    }
-
-    setTesting(true);
-    setTestResult(null);
+    if (editing !== undefined && !dialog.current?.open) dialog.current?.showModal();
+  }, [editing]);
+  const groups = new Map<string, ProviderConfig[]>();
+  providers.forEach((p) => {
+    const group = getProviderGroupKey(p);
+    groups.set(group, [...(groups.get(group) ?? []), p]);
+  });
+  const supported = [...groups].filter(([, entries]) => isSupportedProvider(entries[0].providerId));
+  const testKey = async (config: ProviderConfig) => {
+    setTesting(config.id);
     try {
-      const config = getFormProviderConfig(form, editingId ?? 'test', providers.find((provider) => provider.id === editingId));
-      const ok = await sendMessage<boolean>({ type: MSG.VALIDATE_KEY, config });
-      setTestResult(ok ? 'Connection successful!' : 'Connection failed.');
-    } catch (err: unknown) {
-      setTestResult(err instanceof Error ? err.message : 'Connection failed.');
+      const result = await sendMessage<{ ok: boolean; error?: string }>({
+        type: MSG.TEST_KEY,
+        config,
+      });
+      if (result?.ok) {
+        await sendMessage({ type: MSG.RESET_PROVIDER_HEALTH, configId: config.id });
+        setMessage(`${config.name}: Ready`);
+      } else
+        setMessage(
+          `${config.name}: Refused. ${result?.error ?? 'Check the key, endpoint and account permissions.'}`,
+        );
+    } catch (e) {
+      setMessage(String(e));
     } finally {
-      setTesting(false);
+      setTesting(undefined);
     }
   };
-
-  // --- Settings helpers ---
-  const updatePlayback = async (partial: Partial<typeof settings.playback>) => {
-    const updated = normalizeSettings({ ...settings, followAlong: partial.autoScrollEnabled ?? settings.followAlong, playback: { ...settings.playback, ...partial } });
-    setSettings(updated);
-    await saveSettings(updated);
-  };
-
-  const updateHighlight = async (partial: Partial<typeof settings.highlight>) => {
-    const updated = normalizeSettings({ ...settings, followAlong: partial.autoScroll ?? settings.followAlong, highlight: { ...settings.highlight, ...partial } });
-    setSettings(updated);
-    await saveSettings(updated);
-  };
-
-  const handleSelectVoice = async (voiceId: string) => {
-    if (!settings.activeProviderGroup) return;
-    const updated = { ...settings, activeVoiceId: voiceId };
-    setSettings(updated);
-    await saveSettings(updated);
-  };
-
-  const handleResetSettings = async () => {
-    await saveSettings(DEFAULT_SETTINGS);
-    setSettings(DEFAULT_SETTINGS);
-    setConfirmReset(false);
-  };
-
-  const exportSettings = () => {
-    const blob = new Blob(
-      [JSON.stringify({ version: 1, providers, settings }, null, 2)],
-      { type: 'application/json' },
+  const exportData = () => {
+    const url = URL.createObjectURL(
+      new Blob([JSON.stringify({ version: 1, providers, settings }, null, 2)], {
+        type: 'application/json',
+      }),
     );
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'recito-settings.json';
-    a.click();
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = 'recito-settings.json';
+    anchor.click();
     URL.revokeObjectURL(url);
   };
-
-  const importSettings = () => {
+  const importData = () => {
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = '.json';
     input.onchange = async () => {
-      const file = input.files?.[0];
-      if (!file) return;
       try {
-        const text = await file.text();
-        const data = JSON.parse(text);
-
-        const version = typeof data.version === 'number' ? data.version : 1;
-        if (version > 1) {
-          console.warn(
-            `Recito: import file version ${version} is newer than supported (1). Importing best-effort.`,
-          );
-        }
-
-        if (data.settings && typeof data.settings === 'object') {
-          const merged = normalizeSettings(data.settings);
-          await saveSettings(merged);
-          setSettings(merged);
-        }
-        if (Array.isArray(data.providers)) {
-          await chrome.storage.local.set({ 'ir-providers': data.providers });
-          setProviders(data.providers);
-        }
-      } catch {
-        alert('Failed to import settings. Please check the file is valid JSON.');
+        if (!input.files?.[0]) return;
+        const data = JSON.parse(await input.files[0].text());
+        if (
+          !data.settings ||
+          !Array.isArray(data.providers) ||
+          !data.providers.every(
+            (p: ProviderConfig) =>
+              typeof p.id === 'string' &&
+              typeof p.providerId === 'string' &&
+              typeof p.apiKey === 'string' &&
+              typeof p.name === 'string',
+          )
+        )
+          throw new Error('Invalid settings file.');
+        await chrome.storage.local.set({ 'ir-providers': data.providers });
+        await saveSettings(normalizeSettings(data.settings));
+        await refresh();
+        setMessage('Imported.');
+      } catch (e) {
+        setMessage(`Could not import: ${String(e)}`);
       }
     };
     input.click();
   };
-
   return (
-    <div className="options-layout">
-      {/* Sidebar */}
-      <nav className="sidebar" role="navigation" aria-label="Settings sections">
-        <h2 className="sidebar-title">Recito</h2>
-        <ul className="nav-list">
-          {NAV_ITEMS.map((item) => (
-            <li key={item.id}>
-              <button
-                className={`nav-item ${section === item.id ? 'active' : ''}`}
-                onClick={() => setSection(item.id)}
-              >
-                <svg className="nav-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                  <path d={NAV_ICONS[item.id]} />
-                </svg>
-                {item.label}
-              </button>
-            </li>
-          ))}
-        </ul>
+    <div className="st">
+      <nav className="st-nav" aria-label="Settings sections">
+        <span className="wm">Recito</span>
+        {sections.map(([id, title, icon]) => (
+          <button
+            key={id}
+            aria-current={section === id ? 'page' : undefined}
+            onClick={() => setSection(id)}
+          >
+            <Icon name={icon} size={18} />
+            {title}
+          </button>
+        ))}
+        <div className="saved" role="status">
+          <Icon name="check" size={14} />
+          <span>{saved}</span>
+        </div>
       </nav>
-
-      {/* Content */}
-      <main className="content" role="main">
-        {/* === Appearance === */}
-        {section === 'appearance' && (
-          <div className="section-content">
-            <h1>Appearance</h1>
-            <div className="settings-card">
-              <div className="setting-row">
-                <span className="setting-label">Theme</span>
-              </div>
-              <div className="theme-options">
-                {(['system', 'light', 'dark'] as ThemeMode[]).map((mode) => (
-                  <button
-                    key={mode}
-                    className={`btn ${settings.theme === mode ? 'btn-primary' : ''}`}
-                    onClick={() => saveSettings({ ...settings, theme: mode }).then(() => setSettings({ ...settings, theme: mode }))}
-                    style={{ textTransform: 'capitalize' }}
-                  >
-                    {mode === 'system' ? 'System' : mode === 'light' ? 'Light' : 'Dark'}
-                  </button>
-                ))}
-              </div>
-              <p className="setting-desc" style={{ marginTop: '12px' }}>
-                {settings.theme === 'system'
-                  ? 'Follows your operating system preference.'
-                  : settings.theme === 'light'
-                    ? 'Always use light theme.'
-                    : 'Always use dark theme.'}
-              </p>
-            </div>
-            <div className="settings-card">
-              <div className="setting-row">
-                <span className="setting-label">Ink</span>
-              </div>
-              <div className="color-swatches">
-                {Object.entries(INKS).map(([ink, c]) => (
-                  <button
-                    key={c}
-                    className={`swatch${settings.ink === ink ? ' swatch-active' : ''}`}
-                    style={{ background: c }}
-                    onClick={() => {
-                      const updated = normalizeSettings({ ...settings, ink: ink as AppSettings['ink'] });
-                      saveSettings(updated).then(() => setSettings(updated));
-                    }}
-                    aria-label={`Select ${ink} ink`}
-                  />
-                ))}
-              </div>
-              <p className="setting-desc" style={{ marginTop: '12px' }}>
-                Controls the color of buttons, toggles, and other UI elements.
-                Highlights use the same ink.
-              </p>
-            </div>
-
-            <div className="settings-card">
-              <label className="setting-row">
-                Highlight style
-                <select aria-label="Highlight style" value={settings.highlightStyle} onChange={async (e) => {
-                  const updated = normalizeSettings({ ...settings, highlightStyle: e.target.value as AppSettings['highlightStyle'] });
-                  await saveSettings(updated);
-                  setSettings(updated);
-                }}>
-                  <option value="marker">Marker</option>
-                  <option value="underline">Underline</option>
-                  <option value="sentence">Sentence only</option>
-                </select>
-              </label>
-              <p style={{ fontFamily: 'Georgia, serif', padding: 16, background: settings.themeColor + '33' }}>
-                Follow the <mark style={{ background: settings.highlightStyle === 'marker' ? settings.themeColor ?? undefined : 'transparent', borderBottom: settings.highlightStyle === 'underline' ? `3px solid ${settings.themeColor}` : undefined }}>words</mark> as you listen.
-              </p>
-            </div>
-
-            <div className="settings-card">
-              <label className="setting-row toggle-row">
-                <span className="setting-label">Auto-scroll to highlighted text</span>
-                <input
-                  type="checkbox"
-                  className="toggle"
-                  checked={settings.highlight.autoScroll}
-                  onChange={(e) => updateHighlight({ autoScroll: e.target.checked })}
-                />
-              </label>
-            </div>
+      <main className="st-main">
+        {message && (
+          <div className="callout" role="status">
+            {message}
+            <button className="link" onClick={() => setMessage('')}>
+              Dismiss
+            </button>
           </div>
         )}
-
-        {/* === Providers === */}
-        {section === 'providers' && (
-          <div className="section-content">
-            <div className="section-header">
-              <h1>Providers</h1>
-              <button className="btn btn-primary" onClick={openAddForm}>
-                Add Provider
-              </button>
-            </div>
-
-            {providers.length === 0 && !showForm && (
-              <p className="empty-state">No providers configured. Add one to get started.</p>
-            )}
-
-            <div className="card-list">
-              {(() => {
-                // Group providers by providerId (+ baseUrl for custom)
-                const groups = new Map<string, ProviderConfig[]>();
-                for (const p of providers) {
-                  const key = getProviderGroupKey(p);
-                  const group = groups.get(key) ?? [];
-                  group.push(p);
-                  groups.set(key, group);
+        {section === 'voice' && (
+          <>
+            <h1>Voice &amp; keys</h1>
+            <p className="lede">
+              Recito reads with your own provider account. Keys stay in this browser.
+            </p>
+            <h2>Reading voice</h2>
+            <div className="card">
+              <Row
+                title="Provider in use"
+                detail={
+                  active
+                    ? `${readyKeyCount(providers, settings.activeProviderGroup, health)} keys ready`
+                    : 'Add a key to get started'
                 }
-
-                return Array.from(groups.entries()).map(([groupKey, groupProviders]) => {
-                  const meta = PROVIDER_LIST.find((m) => m.id === groupProviders[0].providerId);
-                  const isGroupActive = settings.activeProviderGroup === groupKey;
-                  const healthyCount = groupProviders.filter(
-                    (p) => !healthMap[p.id] || healthMap[p.id].status === 'healthy',
-                  ).length;
-
-                  return (
-                    <React.Fragment key={groupKey}>
-                      <div className="provider-group-header">
-                        <span>
-                          {meta?.name ?? groupProviders[0].providerId}
-                          {groupProviders.length > 1 && (
-                            <> ({groupProviders.length} keys &mdash; {healthyCount} healthy)</>
+              >
+                <Segment
+                  label="Provider in use"
+                  value={settings.activeProviderGroup ?? ''}
+                  values={supported.map(
+                    ([key, entries]) =>
+                      [
+                        key,
+                        PROVIDER_LIST.find((p) => p.id === entries[0].providerId)?.name ??
+                          entries[0].name,
+                      ] as const,
+                  )}
+                  onChange={(group) => update({ activeProviderGroup: group, activeVoiceId: null })}
+                />
+              </Row>
+              <div className="sub">
+                <VoiceGrid
+                  config={active}
+                  selected={settings.activeVoiceId}
+                  onSelect={(voice) => update({ activeVoiceId: voice })}
+                />
+              </div>
+            </div>
+            <h2>Providers and keys</h2>
+            {[...groups].map(([group, entries]) => {
+              const retired = !isSupportedProvider(entries[0].providerId);
+              return (
+                <div className="card" key={group}>
+                  <div className="grp-head">
+                    <div>
+                      <b>
+                        {PROVIDER_LIST.find((p) => p.id === entries[0].providerId)?.name ??
+                          entries[0].providerId}
+                      </b>
+                      <small>
+                        {entries.length} {entries.length === 1 ? 'key' : 'keys'} · failover order
+                      </small>
+                    </div>
+                    {settings.activeProviderGroup === group && <span className="tag">In use</span>}
+                  </div>
+                  {retired && (
+                    <div className="row">
+                      <p>
+                        This provider is no longer supported. Your saved keys are kept so you can
+                        remove or export them. Choose MiMo, OpenAI, or a custom compatible service.
+                      </p>
+                    </div>
+                  )}
+                  {entries.map((config, index) => {
+                    const h = health[config.id];
+                    const resting = h?.status === 'cooldown' && (h.cooldownUntil ?? 0) > now;
+                    const failed = h?.status === 'failed';
+                    return (
+                      <div
+                        className={`row key ${flash === config.id ? 'flash' : ''}`}
+                        key={config.id}
+                        id={`key-${config.id}`}
+                      >
+                        <div className="t">
+                          <b>
+                            {index + 1}. {config.name}
+                          </b>
+                          <span className="mask">{maskKey(config.apiKey)}</span>
+                          {failed && (
+                            <span className="why">
+                              {h.lastError?.message ?? 'The provider refused this key.'}
+                            </span>
                           )}
-                        </span>
-                        {isGroupActive ? (
-                          <span className="badge">Active</span>
-                        ) : !meta ? (
-                          <span className="badge">Unsupported</span>
-                        ) : (
-                          <button
-                            className="btn btn-sm"
-                            onClick={() =>
-                              setActiveProviderGroup(groupKey).then(loadData)
-                            }
-                          >
-                            Set Active
-                          </button>
-                        )}
-                      </div>
-                      {groupProviders.map((p) => {
-                        const provMeta = PROVIDER_LIST.find((m) => m.id === p.providerId);
-                        const health = healthMap[p.id];
-                        const healthStatus = health?.status ?? 'healthy';
-
-                        return (
-                          <div
-                            key={p.id}
-                            className={`card ${isGroupActive ? 'card-active' : ''}`}
-                          >
-                            <div className="card-body">
-                              <div className="card-title-row">
-                                <span className={`health-dot health-dot--${healthStatus}`} />
-                                <strong>{p.name}</strong>
-                              </div>
-                              <div className="card-meta">
-                                {provMeta?.name ?? p.providerId} &middot; Key: {maskKey(p.apiKey)}
-                              </div>
-                              {!provMeta && (
-                                <p className="health-info">
-                                  This provider is no longer supported. Its saved key is retained until you delete it.
-                                  Select MiMo or OpenAI, or add a Custom configuration for a service that supports
-                                  the OpenAI speech API. Configurations are not converted automatically.
-                                </p>
+                        </div>
+                        <div
+                          className="ctl"
+                          style={{ flexWrap: 'wrap', justifyContent: 'flex-end' }}
+                        >
+                          <span className={`status ${failed ? 'bad' : resting ? 'wait' : 'ok'}`}>
+                            {retired
+                              ? 'Retired'
+                              : failed
+                                ? 'Refused'
+                                : resting
+                                  ? `Resting · ${Math.ceil(((h.cooldownUntil ?? 0) - now) / 1000)}s`
+                                  : 'Ready'}
+                          </span>
+                          {!retired && (
+                            <>
+                              {(failed || resting) && (
+                                <button
+                                  className="btn sm quiet"
+                                  disabled={testing === config.id}
+                                  onClick={() => testKey(config)}
+                                >
+                                  {testing === config.id ? 'Testing…' : 'Test again'}
+                                </button>
                               )}
-                              {healthStatus === 'cooldown' && health?.cooldownUntil && (
-                                <div className="health-info">
-                                  Cooling down &mdash; retrying in{' '}
-                                  {Math.max(
-                                    0,
-                                    Math.ceil((health.cooldownUntil - Date.now()) / 1000),
-                                  )}
-                                  s
-                                </div>
-                              )}
-                              {healthStatus === 'failed' && (
-                                <div className="health-info">
-                                  Failed: {health?.lastError?.message ?? 'Unknown error'}
-                                  <button
-                                    className="btn btn-sm"
-                                    onClick={() => handleResetHealth(p.id)}
-                                  >
-                                    Reset
-                                  </button>
-                                </div>
-                              )}
-                            </div>
-                            <div className="card-actions">
-                              <button disabled={!isSupportedProvider(p.providerId)} className="btn btn-sm" onClick={() => openEditForm(p)}>
+                              <button className="btn sm quiet" onClick={() => setEditing(config)}>
                                 Edit
                               </button>
-                              <button
-                                className="btn btn-sm btn-danger"
-                                onClick={() => handleDeleteProvider(p.id)}
-                              >
-                                Delete
-                              </button>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </React.Fragment>
-                  );
-                });
-              })()}
-            </div>
-
-            {/* Add/Edit Modal */}
-            {showForm && (
-              <div
-                className="modal-overlay"
-                onClick={() => setShowForm(false)}
-                onKeyDown={(e) => { if (e.key === 'Escape') setShowForm(false); }}
-                role="button"
-                tabIndex={-1}
-                aria-label="Close modal"
-              >
-                {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions */}
-                <div
-                  className="modal"
-                  onClick={(e) => e.stopPropagation()}
-                  onKeyDown={(e) => e.stopPropagation()}
-                  role="dialog"
-                  tabIndex={-1}
-                  aria-label={editingId ? 'Edit provider' : 'Add provider'}
-                >
-                  <h2>{editingId ? 'Edit Provider' : 'Add Provider'}</h2>
-
-                  <label className="form-label">
-                    Provider Type
-                    <select
-                      className="form-select"
-                      value={form.providerId}
-                      onChange={(e) => {
-                        setTestResult(null);
-                        setForm(
-                          nextFormState(form, {
-                            providerId: e.target.value,
-                            name:
-                              PROVIDER_LIST.find((p) => p.id === e.target.value)?.name ??
-                              e.target.value,
-                            baseUrl: e.target.value === 'custom' ? form.baseUrl : '',
-                          }),
-                        );
-                      }}
-                    >
-                      {PROVIDER_LIST.map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {p.name} &mdash; {p.description}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-
-                  <label className="form-label">
-                    Display Name
-                    <input
-                      className="form-input"
-                      type="text"
-                      value={form.name}
-                      onChange={(e) => {
-                        setTestResult(null);
-                        setForm(nextFormState(form, { name: e.target.value }));
-                      }}
-                      placeholder="My OpenAI key"
-                    />
-                  </label>
-
-                  <label className="form-label">
-                    API Key
-                    <input
-                      className="form-input"
-                      type="password"
-                      value={form.apiKey}
-                      onChange={(e) => {
-                        setTestResult(null);
-                        setForm(nextFormState(form, { apiKey: e.target.value }));
-                      }}
-                      placeholder="sk-..."
-                    />
-                  </label>
-
-                  {form.providerId === 'mimo' && (
-                    <label className="form-label">
-                      Model
-                      {!isOfficialMimoEndpoint(form.baseUrl) ? (
-                        <input
-                          className="form-input"
-                          type="text"
-                          value={form.mimoModel}
-                          onChange={(e) => {
-                            setTestResult(null);
-                            setForm(nextFormState(form, { mimoModel: e.target.value }));
-                          }}
-                        />
-                      ) : (
-                        <select
-                          className="form-select"
-                          value={resolvedFormMimoModel}
-                          onChange={(e) => {
-                            setTestResult(null);
-                            setForm(nextFormState(form, { mimoModel: e.target.value }));
-                          }}
-                        >
-                          {!MIMO_MODELS.some((m) => m.modelId === resolvedFormMimoModel) && (
-                            <option value={resolvedFormMimoModel}>{resolvedFormMimoModel} (unsupported)</option>
+                            </>
                           )}
-                          {MIMO_MODELS.map((m) => (
-                            <option key={m.modelId} value={m.modelId}>
-                              {m.label}
-                            </option>
-                          ))}
-                        </select>
-                      )}
-                      <span className="form-hint">MiMo v2.5 built-in voices. Default voice varies by deployment cluster. Saved historical voices require reselection.</span>
-                    </label>
-                  )}
-
-                  {form.providerId === 'mimo' && (
-                    <label className="form-label">
-                      Base URL (optional)
-                      <input
-                        className="form-input"
-                        type="url"
-                        value={form.baseUrl}
-                        onChange={(e) => {
-                          setTestResult(null);
-                          setForm(nextFormState(form, { baseUrl: e.target.value }));
-                        }}
-                        placeholder="https://api.xiaomimimo.com/v1"
-                      />
-                      <span className="form-hint">Nonofficial endpoints keep their model names; compatibility must be checked with the service.</span>
-                    </label>
-                  )}
-
-                  {form.providerId === 'custom' && (
-                    <>
-                      <label className="form-label">
-                        Base URL
-                        <input
-                          className="form-input"
-                          type="url"
-                          value={form.baseUrl}
-                          onChange={(e) => {
-                            setTestResult(null);
-                            setForm(nextFormState(form, { baseUrl: e.target.value }));
-                          }}
-                          placeholder="https://api.example.com/v1"
-                        />
-                      </label>
-                      <label className="form-label">
-                        Model
-                        <input
-                          className="form-input"
-                          type="text"
-                          value={form.customModel}
-                          onChange={(e) => {
-                            setTestResult(null);
-                            setForm(nextFormState(form, { customModel: e.target.value }));
-                          }}
-                          placeholder="tts-1"
-                        />
-                      </label>
-                    </>
-                  )}
-
-                  {testResult && (
-                    <div
-                      className={`test-result ${testResult.includes('successful') ? 'success' : 'error'}`}
-                    >
-                      {testResult}
-                    </div>
-                  )}
-
-                  <div className="modal-actions">
-                    <button
-                      className="btn"
-                      onClick={handleTestConnection}
-                      disabled={testing || !canTestConnection}
-                    >
-                      {testing ? 'Testing...' : 'Test Connection'}
-                    </button>
-                    <div className="modal-actions-right">
-                      <button className="btn" onClick={() => setShowForm(false)}>
-                        Cancel
-                      </button>
-                      <button
-                        className="btn btn-primary"
-                        onClick={handleSaveProvider}
-                        disabled={!canSaveProvider}
-                      >
-                        Save
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* === Voices === */}
-        {section === 'voices' && (
-          <div className="section-content">
-            <h1>Voices</h1>
-            {!settings.activeProviderGroup ? (
-              <p className="empty-state">Select an active provider group first to browse voices.</p>
-            ) : voicesLoading ? (
-              <div>
-                <div className="skeleton skeleton-card" />
-                <div className="skeleton skeleton-card" />
-                <div className="skeleton skeleton-card" />
-              </div>
-            ) : voicesError ? (
-              <p className="error-text">{voicesError}</p>
-            ) : voices.length === 0 ? (
-              <p className="empty-state">No voices available for this provider.</p>
-            ) : (
-              <div className="card-list">
-                {settings.activeProviderGroup === 'mimo' && settings.activeVoiceId && !voices.some((voice) => voice.id === settings.activeVoiceId) && (
-                  <p className="error-text" role="alert">Your saved MiMo voice is no longer listed. Choose a voice below before playing.</p>
-                )}
-                {voices.map((v) => {
-                  const isActive = v.id === settings.activeVoiceId;
-                  return (
-                    <div
-                      key={v.id}
-                      className={`card card-clickable ${isActive ? 'card-active' : ''}`}
-                      onClick={() => handleSelectVoice(v.id)}
-                      role="button"
-                      tabIndex={0}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' || e.key === ' ') {
-                          e.preventDefault();
-                          handleSelectVoice(v.id);
-                        }
-                      }}
-                    >
-                      <div className="card-body">
-                        <div className="card-title-row">
-                          <strong>{v.name}</strong>
-                          {isActive && <span className="badge">Active</span>}
-                        </div>
-                        <div className="card-meta">
-                          {[v.language, v.gender].filter(Boolean).join(' \u00B7 ') || v.id}
+                          {remove === config.id ? (
+                            <>
+                              <span>Remove this key?</span>
+                              <button
+                                className="btn sm danger"
+                                onClick={async () => {
+                                  await deleteProvider(config.id);
+                                  setRemove(null);
+                                  await refresh();
+                                }}
+                              >
+                                Confirm remove
+                              </button>
+                              <button className="btn sm" onClick={() => setRemove(null)}>
+                                Keep
+                              </button>
+                            </>
+                          ) : (
+                            <button
+                              className="btn sm quiet danger"
+                              onClick={() => setRemove(config.id)}
+                            >
+                              Remove
+                            </button>
+                          )}
                         </div>
                       </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* === Playback === */}
-        {section === 'playback' && (
-          <div className="section-content">
-            <h1>Playback</h1>
-
-            <div className="settings-card">
-              <SpeedSlider
-                value={settings.playback.defaultSpeed}
-                onChange={(speed) => updatePlayback({ defaultSpeed: speed })}
-                providerId={
-                  settings.activeProviderGroup
-                    ? settings.activeProviderGroup.includes(':')
-                      ? settings.activeProviderGroup.split(':')[0]
-                      : settings.activeProviderGroup
-                    : null
-                }
-                showChips={false}
-                variant="settings"
-              />
-            </div>
-
-            <div className="settings-card">
-              <label className="setting-row">
-                <span className="setting-label">Default Volume</span>
-                <span className="setting-value">
-                  {Math.round(settings.playback.defaultVolume * 100)}%
-                </span>
-              </label>
-              <input
-                type="range"
-                className="slider"
-                min={0}
-                max={1}
-                step={0.05}
-                value={settings.playback.defaultVolume}
-                onChange={(e) => updatePlayback({ defaultVolume: parseFloat(e.target.value) })}
-                aria-label="Default volume"
-                style={{ '--fill': `${settings.playback.defaultVolume * 100}%` } as React.CSSProperties}
-              />
-            </div>
-
-            <div className="settings-card">
-              <label className="setting-row toggle-row">
-                <span className="setting-label">Auto-scroll with reading</span>
-                <input
-                  type="checkbox"
-                  className="toggle"
-                  checked={settings.playback.autoScrollEnabled}
-                  onChange={(e) => updatePlayback({ autoScrollEnabled: e.target.checked })}
-                />
-              </label>
-            </div>
-
-            <div className="settings-card">
-              <label className="setting-row toggle-row">
-                <span className="setting-label">Skip references section</span>
-                <input
-                  type="checkbox"
-                  className="toggle"
-                  checked={settings.playback.skipReferences}
-                  onChange={(e) => updatePlayback({ skipReferences: e.target.checked })}
-                />
-              </label>
-            </div>
-          </div>
-        )}
-
-        {/* === Hotkeys === */}
-        {section === 'hotkeys' && (
-          <div className="section-content">
-            <h1>Keyboard Shortcuts</h1>
-            <div className="hotkeys-list">
-              {[
-                ['Alt+Shift+Space', 'Play / Pause'],
-                ['Alt+Shift+Right', 'Skip forward'],
-                ['Alt+Shift+Left', 'Skip backward'],
-              ].map(([key, desc]) => (
-                <div key={key} className="hotkey-row">
-                  <kbd className="hotkey-key">{key}</kbd>
-                  <span>{desc}</span>
+                    );
+                  })}
                 </div>
-              ))}
+              );
+            })}
+            <div className="form-actions">
+              <button className="btn primary" onClick={() => setEditing(null)}>
+                <Icon name="key" size={16} />
+                Add a key
+              </button>
+              <span className="rp-hint">
+                Add more than one key per provider and Recito switches to the next when one is
+                rate-limited.
+              </span>
             </div>
-          </div>
+          </>
         )}
-
-        {/* === Advanced === */}
-        {section === 'advanced' && (
-          <div className="section-content">
-            <h1>Advanced</h1>
-
-            <div className="settings-card">
-              <p className="setting-desc">Export all settings and provider configs as JSON.</p>
-              <button className="btn" onClick={exportSettings}>
-                Export Settings
-              </button>
-            </div>
-
-            <div className="settings-card">
-              <p className="setting-desc">Import settings and provider configs from a previously exported JSON file.</p>
-              <button className="btn" onClick={importSettings}>
-                Import Settings
-              </button>
-            </div>
-
-            <div className="settings-card">
-              <p className="setting-desc">Re-run the onboarding wizard to set up providers and preferences.</p>
-              <button
-                className="btn"
-                onClick={() => chrome.tabs.create({ url: chrome.runtime.getURL('src/onboarding/index.html') })}
+        {section === 'look' && (
+          <>
+            <h1>Appearance</h1>
+            <p className="lede">How Recito looks, and how it marks the text it is reading.</p>
+            <h2>Highlight</h2>
+            <div className="card">
+              <div
+                className="preview"
+                data-style={settings.highlightStyle}
+                aria-label="Highlight preview"
               >
-                Replay Onboarding
-              </button>
-            </div>
-
-            <div className="settings-card">
-              <p className="setting-desc">
-                Reset all settings to defaults. This will not delete saved providers.
-              </p>
-              {confirmReset ? (
-                <div className="confirm-row">
-                  <span>Are you sure?</span>
-                  <button className="btn btn-danger" onClick={handleResetSettings}>
-                    Yes, reset
-                  </button>
-                  <button className="btn" onClick={() => setConfirmReset(false)}>
-                    Cancel
-                  </button>
+                Rhythm does part of the remembering for you.{' '}
+                <span className="s">
+                  A voice sets a <span className="w">pace</span>, and a pace is a kind of attention.
+                </span>{' '}
+                When a sentence is spoken you cannot slide past it.
+              </div>
+              <Row title="Style" detail="What marks the word being spoken">
+                <Segment
+                  label="Highlight style"
+                  value={settings.highlightStyle}
+                  values={[
+                    ['marker', 'Marker'],
+                    ['underline', 'Underline'],
+                    ['sentence', 'Sentence only'],
+                  ]}
+                  onChange={(highlightStyle) => update({ highlightStyle })}
+                />
+              </Row>
+              <Row title="Ink" detail="Also the accent colour across Recito">
+                <div className="swatches" role="radiogroup" aria-label="Ink colour">
+                  {Object.entries(INKS).map(([ink, color]) => (
+                    <label key={ink} style={{ '--c': color } as React.CSSProperties}>
+                      <input
+                        type="radio"
+                        name="ink"
+                        aria-label={ink}
+                        value={ink}
+                        checked={settings.ink === ink}
+                        onChange={() => update({ ink: ink as AppSettings['ink'] })}
+                      />
+                    </label>
+                  ))}
                 </div>
-              ) : (
-                <button className="btn btn-danger" onClick={() => setConfirmReset(true)}>
-                  Reset All Settings
-                </button>
-              )}
+              </Row>
             </div>
-          </div>
+            <h2>Theme</h2>
+            <div className="card">
+              <Row
+                title="Recito's own surfaces"
+                detail="Player, popup and settings. Web pages are never restyled."
+              >
+                <Segment
+                  label="Theme"
+                  value={settings.theme}
+                  values={[
+                    ['system', 'System'],
+                    ['light', 'Light'],
+                    ['dark', 'Dark'],
+                  ]}
+                  onChange={(theme) => update({ theme })}
+                />
+              </Row>
+            </div>
+          </>
+        )}
+        {section === 'play' && (
+          <>
+            <h1>Playback</h1>
+            <p className="lede">Defaults for new reading sessions, and where the player sits.</p>
+            <h2>Listening</h2>
+            <div className="card">
+              <Row title="Speed" detail="Applies to OpenAI and custom endpoints">
+                <SpeedControl
+                  speed={settings.playback.defaultSpeed}
+                  providerId={active?.providerId ?? 'openai'}
+                  onChange={(n) => update({ playback: { ...settings.playback, defaultSpeed: n } })}
+                />
+              </Row>
+              <Row title="Volume">
+                <input
+                  aria-label="Default volume"
+                  type="range"
+                  min="0"
+                  max="1"
+                  step=".05"
+                  value={settings.playback.defaultVolume}
+                  onChange={(e) =>
+                    update({ playback: { ...settings.playback, defaultVolume: +e.target.value } })
+                  }
+                />
+              </Row>
+              <Row
+                title="Follow along"
+                detail="Scroll to keep the spoken sentence in view. Pauses for 5 seconds when you scroll yourself."
+              >
+                <input
+                  aria-label="Follow along"
+                  className="sw"
+                  type="checkbox"
+                  checked={settings.followAlong}
+                  onChange={(e) => update({ followAlong: e.target.checked })}
+                />
+              </Row>
+              <Row title="Skip references" detail="Stop before bibliography and footnote sections">
+                <input
+                  aria-label="Skip references"
+                  className="sw"
+                  type="checkbox"
+                  checked={settings.playback.skipReferences}
+                  onChange={(e) =>
+                    update({ playback: { ...settings.playback, skipReferences: e.target.checked } })
+                  }
+                />
+              </Row>
+            </div>
+            <h2>Player</h2>
+            <div className="card">
+              <Row title="Position" detail="You can also drag the player on any page">
+                <Segment
+                  label="Player position"
+                  value={settings.playerPosition}
+                  values={[
+                    ['rail-right', 'Right margin'],
+                    ['rail-left', 'Left margin'],
+                  ]}
+                  onChange={(playerPosition) => update({ playerPosition })}
+                />
+              </Row>
+              <Row
+                title="Tuck away while playing"
+                detail="Shrinks to the play button and time left until you point at it."
+              >
+                <input
+                  className="sw"
+                  aria-label="Tuck away while playing"
+                  type="checkbox"
+                  checked={settings.tuckWhilePlaying}
+                  onChange={(e) => update({ tuckWhilePlaying: e.target.checked })}
+                />
+              </Row>
+              <Row
+                title="Clicking the toolbar icon"
+                detail="The shortcut always starts reading directly"
+              >
+                <Segment
+                  label="Toolbar icon click"
+                  value={settings.iconClick}
+                  values={[
+                    ['popup', 'Opens the popup'],
+                    ['read', 'Starts reading'],
+                  ]}
+                  onChange={(iconClick) => update({ iconClick })}
+                />
+              </Row>
+            </div>
+          </>
+        )}
+        {section === 'keys' && (
+          <>
+            <h1>Shortcuts</h1>
+            <p className="lede">These work on any page, even when the player is tucked away.</p>
+            <div className="card">
+              {(
+                [
+                  ['Play or pause', 'Space'],
+                  ['Skip forward', '→'],
+                  ['Skip back', '←'],
+                ] as const
+              ).map(([label, key]) => (
+                <Row key={key} title={label}>
+                  <kbd>Alt</kbd>
+                  <kbd>Shift</kbd>
+                  <kbd>{key}</kbd>
+                </Row>
+              ))}
+              <Row
+                title="Jump to a passage"
+                detail="While reading, click readable text on the page"
+              >
+                <kbd>Click</kbd>
+              </Row>
+            </div>
+            <p>
+              Chrome owns these bindings.{' '}
+              <button
+                className="link"
+                onClick={() => chrome.tabs.create({ url: 'chrome://extensions/shortcuts' })}
+              >
+                Change them in Chrome's shortcut settings
+              </button>
+            </p>
+          </>
+        )}
+        {section === 'data' && (
+          <>
+            <h1>Data</h1>
+            <p className="lede">Everything Recito stores lives in this browser profile.</p>
+            <div className="card">
+              <Row
+                title="Export settings"
+                detail="A JSON file with your preferences and provider keys. Treat it like a password."
+              >
+                <button className="btn" onClick={exportData}>
+                  Export
+                </button>
+              </Row>
+              <Row title="Import settings" detail="Replaces current preferences and keys">
+                <button className="btn" onClick={importData}>
+                  Import…
+                </button>
+              </Row>
+              <Row title="Run setup again">
+                <button
+                  className="btn"
+                  onClick={() =>
+                    chrome.tabs.create({ url: chrome.runtime.getURL('src/onboarding/index.html') })
+                  }
+                >
+                  Open setup
+                </button>
+              </Row>
+            </div>
+            <h2>Reset</h2>
+            <div className="card">
+              <Row title="Reset preferences" detail="Keys and saved reading positions are kept">
+                {reset ? (
+                  <>
+                    <button
+                      className="btn danger"
+                      onClick={async () => {
+                        const current = await getSettings();
+                        await update({
+                          ...DEFAULT_SETTINGS,
+                          activeProviderGroup: current.activeProviderGroup,
+                          activeVoiceId: current.activeVoiceId,
+                          onboardingComplete: current.onboardingComplete,
+                        });
+                        setReset(false);
+                      }}
+                    >
+                      Confirm reset
+                    </button>
+                    <button className="btn" onClick={() => setReset(false)}>
+                      Cancel
+                    </button>
+                  </>
+                ) : (
+                  <button className="btn danger" onClick={() => setReset(true)}>
+                    Reset…
+                  </button>
+                )}
+              </Row>
+            </div>
+          </>
         )}
       </main>
+      <dialog
+        className="sheet"
+        ref={dialog}
+        aria-labelledby="key-sheet-title"
+        onClose={() => setEditing(undefined)}
+      >
+        <div className="sheet-head">
+          <h3 id="key-sheet-title">{editing ? 'Edit key' : 'Add a key'}</h3>
+          <button className="icon-btn" aria-label="Close" onClick={() => dialog.current?.close()}>
+            <Icon name="close" />
+          </button>
+        </div>
+        <div className="sheet-body">
+          {editing !== undefined && (
+            <ProviderForm
+              key={editing?.id ?? 'new'}
+              existing={editing ?? undefined}
+              onSaved={async () => {
+                dialog.current?.close();
+                setEditing(undefined);
+                await refresh();
+              }}
+            />
+          )}
+        </div>
+      </dialog>
     </div>
   );
 }

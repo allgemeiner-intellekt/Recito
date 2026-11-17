@@ -15,14 +15,24 @@ export class WereadHighlighter {
   private onResize: () => void;
   private invalidated = false;
 
-  constructor(private chapter: WereadChapter, private settings: ResolvedHighlightSettings, onInvalidated: () => void) {
+  constructor(
+    private chapter: WereadChapter,
+    private settings: ResolvedHighlightSettings,
+    onInvalidated: () => void,
+  ) {
     this.originalPosition = chapter.root.style.position;
-    if (getComputedStyle(chapter.root).position === 'static') chapter.root.style.position = 'relative';
+    if (getComputedStyle(chapter.root).position === 'static')
+      chapter.root.style.position = 'relative';
     this.overlay.className = 'recito-weread-highlights';
     this.word.className = 'recito-weread-word';
     this.sentence.className = 'recito-weread-sentence';
     this.overlay.setAttribute('aria-hidden', 'true');
-    Object.assign(this.overlay.style, { position: 'absolute', inset: '0', pointerEvents: 'none', zIndex: '5' });
+    Object.assign(this.overlay.style, {
+      position: 'absolute',
+      inset: '0',
+      pointerEvents: 'none',
+      zIndex: '5',
+    });
     this.overlay.append(this.sentence, this.word);
     chapter.root.appendChild(this.overlay);
     const container = chapter.root.querySelector('.wr_canvasContainer');
@@ -38,13 +48,26 @@ export class WereadHighlighter {
       onInvalidated();
     };
     this.observer = new MutationObserver((records) => {
-      if (!chapter.root.isConnected || location.href !== url
-        || chapter.root.querySelector('.wr_canvasContainer') !== container
-        || reader?.querySelector('.chapterTitle') !== title
-        || records.some(record => container?.contains(record.target) || title?.contains(record.target))) this.onResize();
+      if (
+        !chapter.root.isConnected ||
+        location.href !== url ||
+        chapter.root.querySelector('.wr_canvasContainer') !== container ||
+        reader?.querySelector('.chapterTitle') !== title ||
+        records.some(
+          (record) => container?.contains(record.target) || title?.contains(record.target),
+        )
+      )
+        this.onResize();
     });
-    if (container) this.observer.observe(container, { childList: true, subtree: true, attributes: true, attributeFilter: ['width', 'height', 'style'] });
-    if (title) this.observer.observe(title, { childList: true, characterData: true, subtree: true });
+    if (container)
+      this.observer.observe(container, {
+        childList: true,
+        subtree: true,
+        attributes: true,
+        attributeFilter: ['width', 'height', 'style'],
+      });
+    if (title)
+      this.observer.observe(title, { childList: true, characterData: true, subtree: true });
     // Watch each ancestor directly, rather than all document descendants. This
     // catches reader replacement without reacting to our own overlay updates.
     for (let ancestor: Element | null = chapter.root; ancestor; ancestor = ancestor.parentElement) {
@@ -53,7 +76,9 @@ export class WereadHighlighter {
     window.addEventListener('resize', this.onResize);
   }
 
-  getFullText(): string { return this.chapter.text; }
+  getFullText(): string {
+    return this.chapter.text;
+  }
 
   highlightWord(start: number, end: number): void {
     if (this.invalidated) return;
@@ -67,8 +92,24 @@ export class WereadHighlighter {
     if (this.invalidated) return;
     if (this.lastSentence === `${start}:${end}`) return;
     this.lastSentence = `${start}:${end}`;
-    if (this.settings.sentenceEnabled) this.paint(this.sentence, start, end, this.settings.sentenceColor);
+    if (this.settings.sentenceEnabled)
+      this.paint(this.sentence, start, end, this.settings.sentenceColor);
     this.scrollToRun(start);
+  }
+
+  isReadingVisible(): boolean {
+    const run = this.chapter.runs[this.findStart(Number(this.lastSentence.split(':')[0]))];
+    const top = this.chapter.root.getBoundingClientRect().top + (run?.y ?? 0);
+    return !run || (top >= 0 && top + run.height <= window.innerHeight);
+  }
+
+  returnToReading(): void {
+    const offset = Number(this.lastSentence.split(':')[0]);
+    const run = this.chapter.runs[this.findStart(offset)];
+    if (run)
+      window.scrollBy({
+        top: this.chapter.root.getBoundingClientRect().top + run.y - window.innerHeight / 2,
+      });
   }
 
   clearAll(): void {
@@ -109,8 +150,12 @@ export class WereadHighlighter {
     if (!run || Math.abs(run.baseline - this.lastScrollLine) < 3) return;
     this.lastScrollLine = run.baseline;
     const rect = this.chapter.root.getBoundingClientRect();
-    scrollToHighlightRect({ top: rect.top + run.y, bottom: rect.top + run.y + run.height,
-      height: run.height, width: run.width });
+    scrollToHighlightRect({
+      top: rect.top + run.y,
+      bottom: rect.top + run.y + run.height,
+      height: run.height,
+      width: run.width,
+    });
   }
 
   private paint(layer: HTMLElement, start: number, end: number, color: string): void {
@@ -123,15 +168,23 @@ export class WereadHighlighter {
       const underline = layer === this.word && this.settings.style === 'underline';
       // Keep translucent overlays readable over canvas-painted glyphs.
       const fill = color.replace(/0\.7\)$/, '0.35)');
-      Object.assign(element.style, { position: 'absolute', left: `${box.x}px`, top: `${underline ? box.y + box.height - 3 : box.y}px`,
-        width: `${box.width}px`, height: `${underline ? 3 : box.height}px`, backgroundColor: fill, borderRadius: '3px' });
+      Object.assign(element.style, {
+        position: 'absolute',
+        left: `${box.x}px`,
+        top: `${underline ? box.y + box.height - 3 : box.y}px`,
+        width: `${box.width}px`,
+        height: `${underline ? 3 : box.height}px`,
+        backgroundColor: fill,
+        borderRadius: '3px',
+      });
       fragment.appendChild(element);
     };
     for (let i = this.findStart(start); i < this.chapter.runs.length; i++) {
       const run = this.chapter.runs[i];
       if (run.startOffset >= end) break;
-      const x = run.x + run.width * Math.max(0, start - run.startOffset) / run.text.length;
-      const right = run.x + run.width * Math.min(run.text.length, end - run.startOffset) / run.text.length;
+      const x = run.x + (run.width * Math.max(0, start - run.startOffset)) / run.text.length;
+      const right =
+        run.x + (run.width * Math.min(run.text.length, end - run.startOffset)) / run.text.length;
       if (box && Math.abs(box.y - run.y) < run.height * 0.6 && x - box.x - box.width < run.height) {
         box.width = right - box.x;
         box.height = Math.max(box.height, run.y + run.height - box.y);
