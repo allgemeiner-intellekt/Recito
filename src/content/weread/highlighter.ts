@@ -120,8 +120,11 @@ export class WereadHighlighter {
     const append = () => {
       if (!box) return;
       const element = document.createElement('div');
-      Object.assign(element.style, { position: 'absolute', left: `${box.x}px`, top: `${box.y}px`,
-        width: `${box.width}px`, height: `${box.height}px`, backgroundColor: color, borderRadius: '3px' });
+      const underline = layer === this.word && this.settings.style === 'underline';
+      // Keep translucent overlays readable over canvas-painted glyphs.
+      const fill = color.replace(/0\.7\)$/, '0.35)');
+      Object.assign(element.style, { position: 'absolute', left: `${box.x}px`, top: `${underline ? box.y + box.height - 3 : box.y}px`,
+        width: `${box.width}px`, height: `${underline ? 3 : box.height}px`, backgroundColor: fill, borderRadius: '3px' });
       fragment.appendChild(element);
     };
     for (let i = this.findStart(start); i < this.chapter.runs.length; i++) {

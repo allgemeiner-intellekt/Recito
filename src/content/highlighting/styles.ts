@@ -37,11 +37,16 @@ export function removeHighlightStyles(styleEl: HTMLStyleElement): void {
 
 function buildCSS(settings: ResolvedHighlightSettings): string {
   const underline = settings.style === 'underline';
-  const wordBackground = underline ? 'transparent' : settings.wordColor;
+  const rgb = getComputedStyle(document.body).color.match(/\d+/g)?.map(Number);
+  const darkPage = rgb && (rgb[0] * 0.2126 + rgb[1] * 0.7152 + rgb[2] * 0.0722) > 160;
+  const wordBackground = underline ? 'transparent' : darkPage
+    ? settings.wordColor.replace(/0\.7\)$/, '1)') : settings.wordColor;
+  const wordText = darkPage && !underline ? '#1e1b17' : 'inherit';
 
   return `
 /* CSS Custom Highlight API styles */
 ::highlight(ir-word) {
+  color: ${wordText};
   background-color: ${wordBackground};
   text-decoration: ${underline ? `underline solid ${settings.wordColor}` : 'none'};
   text-decoration-thickness: 3px;
@@ -61,7 +66,7 @@ html.ir-scrub-active { cursor: pointer; }
 /* Fallback mark element styles */
 mark.ir-word-mark {
   background-color: ${wordBackground};
-  color: inherit;
+  color: ${wordText};
   padding: 0 1px;
   margin: 0;
   border-radius: 3px;

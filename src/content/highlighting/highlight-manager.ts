@@ -49,7 +49,12 @@ export class HighlightManager {
    * Highlight a single word by character offsets.
    */
   highlightWord(charStart: number, charEnd: number): void {
-    if (!this.textMap || !this.settings.wordEnabled) return;
+    if (!this.textMap) return;
+    if (!this.settings.wordEnabled) {
+      const range = createRangeFromOffsets(this.textMap.entries, charStart, charEnd);
+      if (range && this.settings.autoScroll) scrollToHighlight(range);
+      return;
+    }
 
     this.clearWordHighlight();
 

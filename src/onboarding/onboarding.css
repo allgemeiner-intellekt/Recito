@@ -451,3 +451,7 @@ body {
 }
 
 h1, h2 { font-family: Georgia, "Times New Roman", serif; }
+
+@media (prefers-reduced-motion: reduce) {
+  .value-card { opacity: 1; }
+}
