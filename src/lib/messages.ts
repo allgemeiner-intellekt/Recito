@@ -63,6 +63,7 @@ export const MSG = {
   // Settings
   SETTINGS_CHANGED: 'SETTINGS_CHANGED',
   OPEN_OPTIONS: 'OPEN_OPTIONS',
+  OPEN_SETUP: 'OPEN_SETUP',
 
   // Toolbar UI (SW → content)
   SHOW_TOOLBAR: 'SHOW_TOOLBAR',
@@ -296,6 +297,7 @@ export interface ShowToolbarMessage {
 }
 
 export type ExtensionMessage =
+  | { type: typeof MSG.OPEN_SETUP }
   | { type: typeof MSG.TEST_KEY; config: ProviderConfig }
   | { type: typeof MSG.RETRY }
   | { type: typeof MSG.SET_VOICE; voiceId: string }

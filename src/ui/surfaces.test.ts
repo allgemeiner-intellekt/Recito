@@ -402,3 +402,19 @@ it.each(['popup', 'player'] as const)(
     });
   },
 );
+
+it('routes in-page setup through runtime messaging without requiring the Tabs API', async () => {
+  data['ir-providers'] = [];
+  vi.stubGlobal('chrome', { ...chrome, tabs: undefined });
+  useToolbarStore.setState({
+    snapshot: {
+      ...initial,
+      status: 'error',
+      providerId: undefined,
+      error: { kind: 'no-provider', chunkIndex: 0 },
+    },
+  });
+  await render(React.createElement(FloatingToolbar));
+  await click('Set up Recito');
+  expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({ type: MSG.OPEN_SETUP });
+});

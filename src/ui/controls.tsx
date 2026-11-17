@@ -70,8 +70,7 @@ export function ErrorCard({
   player?: boolean;
 }) {
   const copy = errorCopy(error, providerName);
-  const setup = () =>
-    chrome.tabs.create({ url: chrome.runtime.getURL('src/onboarding/index.html') });
+  const setup = () => sendMessage({ type: MSG.OPEN_SETUP });
   return (
     <div className={player ? 'rp-note rp-card bad' : 'callout bad'} role="alert">
       <Icon name="alert" />

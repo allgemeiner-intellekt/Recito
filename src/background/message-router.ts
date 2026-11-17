@@ -226,6 +226,10 @@ export async function routeMessage(
       }
 
       // === Settings ===
+      case MSG.OPEN_SETUP:
+        await chrome.tabs.create({ url: chrome.runtime.getURL('src/onboarding/index.html') });
+        sendResponse({ ok: true });
+        break;
       case MSG.OPEN_OPTIONS: {
         if (message.configId)
           chrome.tabs.create({

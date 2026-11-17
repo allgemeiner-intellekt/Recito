@@ -80,3 +80,52 @@ it('seeks inside a selection and switches to page scope at the clicked text outs
   expect(page).toMatchObject({ scope: { kind: 'page' }, startChunk: 0 });
   await handleMessage({ type: MSG.STOP });
 });
+
+it('refreshes cached page text when skipping references is enabled or disabled', async () => {
+  document.body.innerHTML = '<article><p>Main words.\nReferences\nReference words.</p></article>';
+  window.getSelection()?.removeAllRanges();
+  vi.stubGlobal('CSS', { highlights: new Map() });
+  vi.stubGlobal(
+    'Highlight',
+    class extends Set<Range> {
+      priority = 0;
+    },
+  );
+  let skip = false;
+  vi.stubGlobal('chrome', {
+    storage: {
+      local: {
+        get: vi.fn(async (key: string) => ({
+          [key]:
+            key === 'ir-settings'
+              ? {
+                  ...DEFAULT_SETTINGS,
+                  playback: { ...DEFAULT_SETTINGS.playback, skipReferences: skip },
+                }
+              : undefined,
+        })),
+        set: vi.fn().mockResolvedValue(undefined),
+      },
+      onChanged: { addListener: vi.fn(), removeListener: vi.fn() },
+    },
+    runtime: { sendMessage: vi.fn().mockResolvedValue({ ok: true }) },
+  });
+  const { handleMessage } = await import('./runtime');
+  const read = async () => {
+    const response = (await handleMessage({ type: MSG.EXTRACT_CONTENT, fromSelection: false })) as {
+      totalChunks: number;
+    };
+    const chunks = [];
+    for (let i = 0; i < response.totalChunks; i++)
+      chunks.push(
+        ((await handleMessage({ type: MSG.GET_CHUNK, index: i })) as { text: string }).text,
+      );
+    return chunks.join(' ');
+  };
+  expect(await read()).toContain('Reference words');
+  skip = true;
+  expect(await read()).not.toContain('Reference words');
+  skip = false;
+  expect(await read()).toContain('Reference words');
+  await handleMessage({ type: MSG.STOP });
+});

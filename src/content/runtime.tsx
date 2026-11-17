@@ -105,11 +105,13 @@ export async function handleMessage(message: ExtensionMessage): Promise<unknown>
       const selection = getSelectedText();
       const fromSelection = Boolean(!isWeread() && selection && message.fromSelection !== false);
       selectionScope = fromSelection;
+      const readingSettings = await getSettings();
       const extractionKey = createExtractionCacheKey({
         url: window.location.href,
         fromSelection,
         selectionText: selection?.text ?? null,
         chunkConfig: message.chunkConfig,
+        skipReferences: readingSettings.playback.skipReferences,
       });
 
       if (
@@ -171,7 +173,6 @@ export async function handleMessage(message: ExtensionMessage): Promise<unknown>
         sourceEl = result.sourceElement;
       }
 
-      const readingSettings = await getSettings();
       if (!fromSelection && readingSettings.playback.skipReferences) {
         textContent = textContent.split(
           /(?:\n|^)(?:References|Bibliography|Footnotes)\s*(?:\n|$)/i,

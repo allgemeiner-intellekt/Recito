@@ -357,3 +357,16 @@ it('returns the provider failure reason from a real synthesis test', async () =>
   );
   expect(respond).toHaveBeenCalledWith({ ok: false, error: 'Account quota exhausted' });
 });
+
+it('opens setup in the background for an in-page request', async () => {
+  const create = vi.fn().mockResolvedValue({});
+  vi.stubGlobal('chrome', {
+    ...chrome,
+    tabs: { ...chrome.tabs, create },
+    runtime: { ...chrome.runtime, getURL: (path: string) => 'chrome-extension://test/' + path },
+  });
+  const respond = vi.fn();
+  await routeMessage({ type: MSG.OPEN_SETUP }, { tab: { id: 7 } as chrome.tabs.Tab }, respond);
+  expect(create).toHaveBeenCalledWith({ url: 'chrome-extension://test/src/onboarding/index.html' });
+  expect(respond).toHaveBeenCalledWith({ ok: true });
+});
