@@ -119,3 +119,46 @@ describe('MiMo configuration migration', () => {
     },
   );
 });
+
+describe('redesign settings migration', () => {
+  it('drops legacy colours, merges scroll flags, and migrates left position', async () => {
+    data['ir-settings'] = {
+      themeColor: '#ff00ff',
+      highlight: { wordEnabled: false, sentenceEnabled: false, wordColor: 'red', autoScroll: true },
+      playback: { autoScrollEnabled: false, defaultSpeed: 1.5 },
+    };
+    data['ir-toolbar-position'] = 'bottom-left';
+    expect(await getSettings()).toMatchObject({
+      ink: 'blue', highlightStyle: 'sentence', followAlong: false,
+      playerPosition: 'rail-left', playerOffset: 160, tuckWhilePlaying: true, iconClick: 'popup',
+      highlight: { wordColor: null, sentenceColor: null, autoScroll: false },
+      playback: { defaultSpeed: 1.5, defaultVolume: 1, autoScrollEnabled: false },
+    });
+    const writes = vi.mocked(chrome.storage.local.set).mock.calls.length;
+    await getSettings();
+    expect(vi.mocked(chrome.storage.local.set).mock.calls.length).toBe(writes);
+  });
+
+  it.each(['bottom-center', 'bottom-right', undefined])('maps old position %s to the right rail', async (position) => {
+    data['ir-settings'] = {};
+    data['ir-toolbar-position'] = position;
+    expect((await getSettings()).playerPosition).toBe('rail-right');
+  });
+
+  it('keeps current preferences through export and import', async () => {
+    const { normalizeSettings } = await import('./settings-model');
+    const settings = normalizeSettings({
+      ink: 'mint', highlightStyle: 'underline', followAlong: false,
+      playerPosition: 'rail-left', playerOffset: 230, tuckWhilePlaying: false, iconClick: 'read',
+    });
+    const exported = JSON.parse(JSON.stringify({ version: 1, settings }));
+    expect(normalizeSettings(exported.settings)).toEqual(settings);
+    expect(normalizeSettings({ themeColor: '#ff00ff' }).ink).toBe('blue');
+  });
+
+  it('honours either legacy scroll flag being off', async () => {
+    const { normalizeSettings } = await import('./settings-model');
+    expect(normalizeSettings({ highlight: { ...DEFAULT_SETTINGS.highlight, autoScroll: false } }).followAlong).toBe(false);
+    expect(normalizeSettings({ playback: { ...DEFAULT_SETTINGS.playback, autoScrollEnabled: false } }).followAlong).toBe(false);
+  });
+});

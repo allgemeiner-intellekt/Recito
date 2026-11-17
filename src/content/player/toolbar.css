@@ -7,60 +7,16 @@
   color: var(--ir-text);
   line-height: 1.4;
 
-  /* Dark theme (default) */
-  --ir-bg: rgba(26, 26, 46, 0.95);
-  --ir-border: rgba(255, 255, 255, 0.1);
-  --ir-border-top: rgba(255, 255, 255, 0.15);
-  --ir-shadow: rgba(0, 0, 0, 0.4);
-  --ir-text: #ffffff;
-  --ir-text-muted: rgba(255, 255, 255, 0.5);
-  --ir-btn-hover: rgba(255, 255, 255, 0.12);
-  --ir-btn-active: rgba(255, 255, 255, 0.2);
-  --ir-progress-track: rgba(255, 255, 255, 0.15);
-  --ir-accent: #3b82f6;
-  --ir-accent-hover: #2563eb;
-  --ir-accent-glow: rgba(59, 130, 246, 0.3);
-  --ir-playing: #f59e0b;
-  --ir-playing-hover: #d97706;
-  --ir-playing-glow: rgba(245, 158, 11, 0.3);
-  --ir-stop: #ef4444;
-  --ir-stop-hover: rgba(239, 68, 68, 0.3);
-  --ir-close-hover: rgba(239, 68, 68, 0.3);
-  --ir-volume-color: rgba(255, 255, 255, 0.7);
-  --ir-volume-track: rgba(255, 255, 255, 0.2);
-  --ir-volume-thumb: #ffffff;
-  --ir-spinner-ring: rgba(255, 255, 255, 0.2);
-  --ir-spinner-arc: #ffffff;
-  --ir-toast-bg: rgba(30, 30, 50, 0.95);
-  --ir-toast-shadow: rgba(0, 0, 0, 0.4);
-}
-
-:host(.light) {
-  --ir-bg: rgba(255, 255, 255, 0.92);
-  --ir-border: rgba(0, 0, 0, 0.1);
-  --ir-border-top: rgba(255, 255, 255, 0.5);
-  --ir-shadow: rgba(0, 0, 0, 0.15);
-  --ir-text: #1a1a2e;
-  --ir-text-muted: rgba(0, 0, 0, 0.5);
-  --ir-btn-hover: rgba(0, 0, 0, 0.08);
-  --ir-btn-active: rgba(0, 0, 0, 0.12);
-  --ir-progress-track: rgba(0, 0, 0, 0.1);
-  --ir-accent: #2563eb;
-  --ir-accent-hover: #1d4ed8;
-  --ir-accent-glow: rgba(37, 99, 235, 0.25);
-  --ir-playing: #d97706;
-  --ir-playing-hover: #b45309;
-  --ir-playing-glow: rgba(217, 119, 6, 0.25);
-  --ir-stop: #dc2626;
-  --ir-stop-hover: rgba(220, 38, 38, 0.15);
-  --ir-close-hover: rgba(220, 38, 38, 0.15);
-  --ir-volume-color: rgba(0, 0, 0, 0.5);
-  --ir-volume-track: rgba(0, 0, 0, 0.12);
-  --ir-volume-thumb: #1a1a2e;
-  --ir-spinner-ring: rgba(0, 0, 0, 0.15);
-  --ir-spinner-arc: #1a1a2e;
-  --ir-toast-bg: rgba(255, 255, 255, 0.95);
-  --ir-toast-shadow: rgba(0, 0, 0, 0.15);
+  --ir-bg: var(--surface); --ir-border: var(--line); --ir-border-top: var(--line);
+  --ir-shadow: #00000020; --ir-text: var(--ink); --ir-text-muted: var(--ink-2);
+  --ir-btn-hover: var(--sunken); --ir-btn-active: var(--line);
+  --ir-progress-track: var(--line); --ir-accent: var(--mark);
+  --ir-accent-hover: var(--mark-strong); --ir-accent-glow: transparent;
+  --ir-playing: var(--mark); --ir-playing-hover: var(--mark-strong); --ir-playing-glow: transparent;
+  --ir-stop: var(--danger); --ir-stop-hover: var(--danger-soft); --ir-close-hover: var(--danger-soft);
+  --ir-volume-color: var(--ink-2); --ir-volume-track: var(--line);
+  --ir-volume-thumb: var(--ink); --ir-spinner-ring: var(--line); --ir-spinner-arc: var(--ink);
+  --ir-toast-bg: var(--surface); --ir-toast-shadow: #00000020;
 }
 
 *,
@@ -75,8 +31,8 @@
 
 .ir-toolbar {
   background: var(--ir-bg);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
+
+
   border: 1px solid var(--ir-border);
   border-top-color: var(--ir-border-top);
   box-shadow: 0 8px 32px var(--ir-shadow);
@@ -157,7 +113,7 @@
 /* Play/Pause */
 .ir-play-pause {
   background: var(--ir-accent);
-  color: #fff;
+  color: var(--on-mark);
   border-radius: 50%;
   box-shadow: 0 0 12px var(--ir-accent-glow);
   transition: background 0.15s ease, box-shadow 0.15s ease, transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1);
@@ -550,7 +506,7 @@
 
 .ir-panel-select option {
   background: #1a1a2e;
-  color: #fff;
+  color: var(--on-mark);
 }
 
 :host(.light) .ir-panel-select option {
@@ -657,3 +613,5 @@
   white-space: nowrap;
   flex-shrink: 0;
 }
+
+.ir-play-pause, .ir-speed-option--active { color: var(--on-mark); }

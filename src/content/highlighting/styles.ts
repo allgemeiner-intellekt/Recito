@@ -35,29 +35,16 @@ export function removeHighlightStyles(styleEl: HTMLStyleElement): void {
   styleEl.remove();
 }
 
-/**
- * Parse an rgba/rgb color string and derive accent colors for underline and glow.
- */
-function deriveAccentColors(rgbaColor: string): { underline: string; glow: string } {
-  const match = rgbaColor.match(/rgba?\(\s*(\d+),\s*(\d+),\s*(\d+)/);
-  if (!match) {
-    return { underline: rgbaColor, glow: rgbaColor };
-  }
-  const [, r, g, b] = match;
-  return {
-    underline: `rgba(${r}, ${g}, ${b}, 0.7)`,
-    glow: `rgba(${r}, ${g}, ${b}, 0.25)`,
-  };
-}
-
 function buildCSS(settings: ResolvedHighlightSettings): string {
-  const wordAccent = deriveAccentColors(settings.wordColor);
+  const underline = settings.style === 'underline';
+  const wordBackground = underline ? 'transparent' : settings.wordColor;
 
   return `
 /* CSS Custom Highlight API styles */
 ::highlight(ir-word) {
-  background-color: ${settings.wordColor};
-  text-shadow: 0 0 8px ${wordAccent.glow};
+  background-color: ${wordBackground};
+  text-decoration: ${underline ? `underline solid ${settings.wordColor}` : 'none'};
+  text-decoration-thickness: 3px;
 }
 ::highlight(ir-sentence) {
   background-color: ${settings.sentenceColor};
@@ -73,12 +60,13 @@ html.ir-scrub-active { cursor: pointer; }
 
 /* Fallback mark element styles */
 mark.ir-word-mark {
-  background-color: ${settings.wordColor};
+  background-color: ${wordBackground};
   color: inherit;
   padding: 0 1px;
   margin: 0;
   border-radius: 3px;
-  box-shadow: 0 0 6px ${wordAccent.glow};
+  text-decoration: ${underline ? `underline solid ${settings.wordColor}` : 'none'};
+  text-decoration-thickness: 3px;
   transition: background-color 0.15s ease;
 }
 mark.ir-sentence-mark {

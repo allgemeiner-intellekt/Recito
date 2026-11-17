@@ -1,5 +1,5 @@
 import type { ThemeMode } from './types';
-import { deriveAccentVars } from './accent-colors';
+import { INKS } from './settings-model';
 
 export function resolveTheme(mode: ThemeMode): 'light' | 'dark' {
   if (mode === 'system') {
@@ -11,21 +11,10 @@ export function resolveTheme(mode: ThemeMode): 'light' | 'dark' {
 
 export function applyAccentColor(
   hex: string | null,
-  resolvedTheme: 'light' | 'dark',
+  _resolvedTheme: 'light' | 'dark',
 ): void {
-  const el = document.documentElement;
-  if (!hex) {
-    el.style.removeProperty('--accent');
-    el.style.removeProperty('--accent-hover');
-    el.style.removeProperty('--accent-subtle');
-    el.style.removeProperty('--shadow-glow');
-    return;
-  }
-  const vars = deriveAccentVars(hex, resolvedTheme);
-  el.style.setProperty('--accent', vars.accent);
-  el.style.setProperty('--accent-hover', vars.accentHover);
-  el.style.setProperty('--accent-subtle', vars.accentSubtle);
-  el.style.setProperty('--shadow-glow', vars.shadowGlow);
+  const ink = Object.entries(INKS).find(([, color]) => color === hex)?.[0] ?? 'blue';
+  document.documentElement.dataset.ink = ink;
 }
 
 export function applyTheme(

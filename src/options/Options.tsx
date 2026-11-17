@@ -15,8 +15,8 @@ import {
   maskKey,
   generateId,
 } from '@shared/storage';
-import { DEFAULT_SETTINGS, THEME_COLOR_PRESETS } from '@shared/constants';
-import { highlightColorsFromAccent } from '@shared/accent-colors';
+import { DEFAULT_SETTINGS } from '@shared/constants';
+import { INKS, normalizeSettings } from '@shared/settings-model';
 import { SpeedSlider } from '@shared/SpeedSlider';
 import { MSG, sendMessage } from '@shared/messages';
 import { useTheme } from '@shared/useTheme';
@@ -41,23 +41,6 @@ const NAV_ITEMS: { id: Section; label: string }[] = [
   { id: 'playback', label: 'Playback' },
   { id: 'hotkeys', label: 'Hotkeys' },
   { id: 'advanced', label: 'Advanced' },
-];
-
-// Extra highlight color overrides (beyond the accent-derived default)
-const EXTRA_WORD_COLORS = [
-  'rgba(239, 68, 68, 0.35)',
-  'rgba(34, 197, 94, 0.35)',
-  'rgba(234, 179, 8, 0.35)',
-  'rgba(168, 85, 247, 0.35)',
-  'rgba(236, 72, 153, 0.35)',
-];
-
-const EXTRA_SENTENCE_COLORS = [
-  'rgba(239, 68, 68, 0.08)',
-  'rgba(34, 197, 94, 0.08)',
-  'rgba(234, 179, 8, 0.08)',
-  'rgba(168, 85, 247, 0.08)',
-  'rgba(236, 72, 153, 0.08)',
 ];
 
 // --- Modal for Add/Edit Provider ---
@@ -282,13 +265,13 @@ export function Options() {
 
   // --- Settings helpers ---
   const updatePlayback = async (partial: Partial<typeof settings.playback>) => {
-    const updated = { ...settings, playback: { ...settings.playback, ...partial } };
+    const updated = normalizeSettings({ ...settings, followAlong: partial.autoScrollEnabled ?? settings.followAlong, playback: { ...settings.playback, ...partial } });
     setSettings(updated);
     await saveSettings(updated);
   };
 
   const updateHighlight = async (partial: Partial<typeof settings.highlight>) => {
-    const updated = { ...settings, highlight: { ...settings.highlight, ...partial } };
+    const updated = normalizeSettings({ ...settings, followAlong: partial.autoScroll ?? settings.followAlong, highlight: { ...settings.highlight, ...partial } });
     setSettings(updated);
     await saveSettings(updated);
   };
@@ -338,14 +321,7 @@ export function Options() {
         }
 
         if (data.settings && typeof data.settings === 'object') {
-          const merged = { ...DEFAULT_SETTINGS, ...data.settings };
-          // Cross-tool alias: Obsidian writes `accentColor`; Chrome reads `themeColor`.
-          if (
-            typeof data.settings.accentColor === 'string' &&
-            typeof data.settings.themeColor !== 'string'
-          ) {
-            merged.themeColor = data.settings.accentColor;
-          }
+          const merged = normalizeSettings(data.settings);
           await saveSettings(merged);
           setSettings(merged);
         }
@@ -414,90 +390,44 @@ export function Options() {
             </div>
             <div className="settings-card">
               <div className="setting-row">
-                <span className="setting-label">Accent color</span>
+                <span className="setting-label">Ink</span>
               </div>
               <div className="color-swatches">
-                {THEME_COLOR_PRESETS.map((c) => (
+                {Object.entries(INKS).map(([ink, c]) => (
                   <button
                     key={c}
-                    className={`swatch${(settings.themeColor ?? '#3b82f6') === c ? ' swatch-active' : ''}`}
+                    className={`swatch${settings.ink === ink ? ' swatch-active' : ''}`}
                     style={{ background: c }}
                     onClick={() => {
-                      const updated = { ...settings, themeColor: c };
+                      const updated = normalizeSettings({ ...settings, ink: ink as AppSettings['ink'] });
                       saveSettings(updated).then(() => setSettings(updated));
                     }}
-                    aria-label="Select accent color"
+                    aria-label={`Select ${ink} ink`}
                   />
                 ))}
               </div>
               <p className="setting-desc" style={{ marginTop: '12px' }}>
                 Controls the color of buttons, toggles, and other UI elements.
-                Highlight colors follow the accent by default.
+                Highlights use the same ink.
               </p>
             </div>
 
             <div className="settings-card">
-              <label className="setting-row toggle-row">
-                <span className="setting-label">Word highlighting</span>
-                <input
-                  type="checkbox"
-                  className="toggle"
-                  checked={settings.highlight.wordEnabled}
-                  onChange={(e) => updateHighlight({ wordEnabled: e.target.checked })}
-                />
+              <label className="setting-row">
+                Highlight style
+                <select aria-label="Highlight style" value={settings.highlightStyle} onChange={async (e) => {
+                  const updated = normalizeSettings({ ...settings, highlightStyle: e.target.value as AppSettings['highlightStyle'] });
+                  await saveSettings(updated);
+                  setSettings(updated);
+                }}>
+                  <option value="marker">Marker</option>
+                  <option value="underline">Underline</option>
+                  <option value="sentence">Sentence only</option>
+                </select>
               </label>
-              {settings.highlight.wordEnabled && (
-                <div className="color-swatches">
-                  <button
-                    className={`swatch${settings.highlight.wordColor === null ? ' swatch-active' : ''}`}
-                    style={{ background: highlightColorsFromAccent(settings.themeColor).wordColor }}
-                    onClick={() => updateHighlight({ wordColor: null })}
-                    aria-label="Follow accent color"
-                    title="Follow accent"
-                  />
-                  {EXTRA_WORD_COLORS.map((c) => (
-                    <button
-                      key={c}
-                      className={`swatch${settings.highlight.wordColor === c ? ' swatch-active' : ''}`}
-                      style={{ background: c }}
-                      onClick={() => updateHighlight({ wordColor: c })}
-                      aria-label="Select word highlight color"
-                    />
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <div className="settings-card">
-              <label className="setting-row toggle-row">
-                <span className="setting-label">Sentence highlighting</span>
-                <input
-                  type="checkbox"
-                  className="toggle"
-                  checked={settings.highlight.sentenceEnabled}
-                  onChange={(e) => updateHighlight({ sentenceEnabled: e.target.checked })}
-                />
-              </label>
-              {settings.highlight.sentenceEnabled && (
-                <div className="color-swatches">
-                  <button
-                    className={`swatch${settings.highlight.sentenceColor === null ? ' swatch-active' : ''}`}
-                    style={{ background: highlightColorsFromAccent(settings.themeColor).sentenceColor }}
-                    onClick={() => updateHighlight({ sentenceColor: null })}
-                    aria-label="Follow accent color"
-                    title="Follow accent"
-                  />
-                  {EXTRA_SENTENCE_COLORS.map((c) => (
-                    <button
-                      key={c}
-                      className={`swatch${settings.highlight.sentenceColor === c ? ' swatch-active' : ''}`}
-                      style={{ background: c }}
-                      onClick={() => updateHighlight({ sentenceColor: c })}
-                      aria-label="Select sentence highlight color"
-                    />
-                  ))}
-                </div>
-              )}
+              <p style={{ fontFamily: 'Georgia, serif', padding: 16, background: settings.themeColor + '33' }}>
+                Follow the <mark style={{ background: settings.highlightStyle === 'marker' ? settings.themeColor ?? undefined : 'transparent', borderBottom: settings.highlightStyle === 'underline' ? `3px solid ${settings.themeColor}` : undefined }}>words</mark> as you listen.
+              </p>
             </div>
 
             <div className="settings-card">

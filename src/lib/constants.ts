@@ -5,6 +5,13 @@ export const DEFAULT_SETTINGS: AppSettings = {
   activeVoiceId: null,
   theme: 'system' as ThemeMode,
   themeColor: null,
+  ink: 'blue',
+  highlightStyle: 'marker',
+  followAlong: true,
+  playerPosition: 'rail-right',
+  playerOffset: 160,
+  tuckWhilePlaying: true,
+  iconClick: 'popup',
   playback: {
     defaultSpeed: 1.0,
     defaultVolume: 1.0,

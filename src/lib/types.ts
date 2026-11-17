@@ -102,6 +102,9 @@ export interface WordTiming {
 
 // === Theme ===
 
+export type InkColor = 'blue' | 'amber' | 'rose' | 'mint';
+export type HighlightStyle = 'marker' | 'underline' | 'sentence';
+
 export type ThemeMode = 'system' | 'light' | 'dark';
 
 // === Settings Types ===
@@ -116,6 +119,7 @@ export interface HighlightSettings {
 
 /** Resolved highlight settings — colors are always concrete strings, never null. */
 export interface ResolvedHighlightSettings {
+  style?: HighlightStyle;
   wordColor: string;
   sentenceColor: string;
   wordEnabled: boolean;
@@ -139,7 +143,15 @@ export interface AppSettings {
   playback: PlaybackSettings;
   highlight: HighlightSettings;
   theme: ThemeMode;
+  /** Compatibility projection for older surfaces. */
   themeColor: string | null;
+  ink: InkColor;
+  highlightStyle: HighlightStyle;
+  followAlong: boolean;
+  playerPosition: 'rail-right' | 'rail-left';
+  playerOffset: number;
+  tuckWhilePlaying: boolean;
+  iconClick: 'popup' | 'read';
   onboardingComplete: boolean;
 }
 

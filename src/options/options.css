@@ -161,7 +161,7 @@ body {
 .btn-primary {
   background: var(--accent);
   border-color: var(--accent);
-  color: #fff;
+  color: var(--on-mark);
 }
 
 .btn-primary:hover {
@@ -254,7 +254,7 @@ body {
   padding: 2px 8px;
   border-radius: 10px;
   background: var(--accent);
-  color: #fff;
+  color: var(--on-mark);
 }
 
 /* ---- Skeleton loading ---- */
@@ -607,12 +607,12 @@ body {
 
 .health-dot--healthy {
   background: var(--success);
-  animation: health-pulse 2s ease-in-out infinite;
+  animation: none;
 }
 
 .health-dot--cooldown {
   background: var(--warning);
-  animation: health-blink 1s ease-in-out infinite;
+  animation: none;
 }
 
 .health-dot--failed {
@@ -677,3 +677,5 @@ body {
   gap: 10px;
   font-size: 14px;
 }
+
+h1, h2 { font-family: Georgia, "Times New Roman", serif; }
