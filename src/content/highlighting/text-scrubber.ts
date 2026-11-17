@@ -5,6 +5,7 @@ import { useToolbarStore } from '../state/store';
 let manager: HighlightManager | null = null;
 let chunks: TextChunk[] = [];
 let seekCallback: ((chunkIndex: number) => void) | null = null;
+let outsideCallback: ((offset: number) => void) | undefined;
 let nodeMap: WeakMap<Text, TextNodeEntry> | null = null;
 let lastHoveredChunkIndex = -1;
 let rafId = 0;
@@ -12,8 +13,7 @@ let rafId = 0;
 const HAS_CARET_POSITION = 'caretPositionFromPoint' in document;
 const HAS_CARET_RANGE = 'caretRangeFromPoint' in document;
 
-const INTERACTIVE_SELECTOR =
-  'a, button, input, select, textarea, [role="button"], [role="link"]';
+const INTERACTIVE_SELECTOR = 'a, button, input, select, textarea, [role="button"], [role="link"]';
 
 function isPlaybackActive(): boolean {
   const status = useToolbarStore.getState().playbackStatus;
@@ -23,10 +23,7 @@ function isPlaybackActive(): boolean {
 /**
  * Get the text node and local offset at a screen coordinate.
  */
-function getCaretInfo(
-  x: number,
-  y: number,
-): { node: Text; offset: number } | null {
+function getCaretInfo(x: number, y: number): { node: Text; offset: number } | null {
   // caretPositionFromPoint (standard, Chrome 128+)
   if (HAS_CARET_POSITION) {
     const pos = document.caretPositionFromPoint(x, y);
@@ -108,7 +105,12 @@ function onClick(e: MouseEvent): void {
   if (target?.closest(INTERACTIVE_SELECTOR)) return;
 
   const chunkIndex = resolveChunkAtPoint(e.clientX, e.clientY);
-  if (chunkIndex < 0) return;
+  if (chunkIndex < 0) {
+    const caret = getCaretInfo(e.clientX, e.clientY);
+    const entry = caret && nodeMap?.get(caret.node);
+    if (entry && outsideCallback) outsideCallback(entry.globalStart + caret!.offset);
+    return;
+  }
 
   e.preventDefault();
   manager.clearScrubHover();
@@ -121,12 +123,14 @@ export function initTextScrubber(
   highlightManager: HighlightManager,
   textChunks: TextChunk[],
   onSeek: (chunkIndex: number) => void,
+  onOutsideSelection?: (offset: number) => void,
 ): void {
   destroyTextScrubber();
 
   manager = highlightManager;
   chunks = textChunks;
   seekCallback = onSeek;
+  outsideCallback = onOutsideSelection;
 
   // Build WeakMap for O(1) text node → entry lookup
   nodeMap = new WeakMap<Text, TextNodeEntry>();
@@ -153,6 +157,7 @@ export function destroyTextScrubber(): void {
   manager = null;
   chunks = [];
   seekCallback = null;
+  outsideCallback = undefined;
   nodeMap = null;
   lastHoveredChunkIndex = -1;
 }

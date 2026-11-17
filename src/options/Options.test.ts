@@ -27,6 +27,13 @@ async function click(text: string) {
 
 beforeEach(() => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  HTMLDialogElement.prototype.showModal = function () {
+    this.open = true;
+  };
+  HTMLDialogElement.prototype.close = function () {
+    this.open = false;
+    this.dispatchEvent(new Event('close'));
+  };
   provider = {
     id: 'mimo',
     providerId: 'mimo',
@@ -55,6 +62,7 @@ beforeEach(() => {
       sendMessage: vi.fn(async (message) => {
         if (message.type === MSG.LIST_VOICES) return mimoProvider.listVoices(provider);
         if (message.type === MSG.GET_PROVIDER_HEALTH) return {};
+        if (message.type === MSG.TEST_KEY) return { ok: true };
       }),
     },
   });
@@ -84,21 +92,20 @@ describe('MiMo settings compatibility', () => {
     await act(async () => {
       root.render(React.createElement(Options));
     });
-    await click('Providers');
+    await click('Voice & keys');
     await click('Edit');
-    const providerType = [...container.querySelectorAll('label')]
-      .find((label) => label.textContent?.trim().startsWith('Provider Type'))!
-      .querySelector('select')!;
+    const providerType = container.querySelector<HTMLInputElement>(
+      'input[name="provider"][value="mimo"]',
+    )!;
     await act(async () => {
-      providerType.value = 'mimo';
-      providerType.dispatchEvent(new Event('change', { bubbles: true }));
+      providerType.click();
     });
-    await click('Save');
+    await click('Test and save');
     const saved = (data['ir-providers'] as ProviderConfig[])[0];
     expect(saved).toEqual({
       ...provider,
       providerId: 'mimo',
-      name: mimoProvider.name,
+      name: provider.name,
       baseUrl: undefined,
       extraParams: { model: 'mimo-v2.5-tts' },
     });
@@ -114,14 +121,14 @@ describe('MiMo settings compatibility', () => {
       await act(async () => {
         root.render(React.createElement(Options));
       });
-      await click('Providers');
+      await click('Voice & keys');
       await click('Edit');
       const model = [...container.querySelectorAll('label')]
         .find((label) => label.textContent?.trim().startsWith('Model'))!
         .querySelector('select')!;
       expect(model.value).toBe('mimo-v2.5-tts');
       expect([...model.options].map((option) => option.value)).toEqual(['mimo-v2.5-tts']);
-      await click('Save');
+      await click('Test and save');
       expect(data['ir-providers']).toEqual([
         {
           ...provider,
@@ -142,16 +149,16 @@ describe('MiMo settings compatibility', () => {
     await act(async () => {
       root.render(React.createElement(Options));
     });
-    await click('Providers');
+    await click('Voice & keys');
     await click('Edit');
-    expect(container.querySelector<HTMLInputElement>('.modal input[type="url"]')!.value).toBe(
+    expect(container.querySelector<HTMLInputElement>('dialog input[type="url"]')!.value).toBe(
       provider.baseUrl,
     );
     const model = [...container.querySelectorAll('label')]
       .find((label) => label.textContent?.trim().startsWith('Model'))!
       .querySelector('input')!;
     expect(model.value).toBe('mimo-v2-tts');
-    await click('Save');
+    await click('Test and save');
     expect(data['ir-providers']).toEqual([provider]);
   });
 
@@ -159,11 +166,11 @@ describe('MiMo settings compatibility', () => {
     await act(async () => {
       root.render(React.createElement(Options));
     });
-    await click('Voices');
+    await click('Voice & keys');
     expect(container.querySelector('[role="alert"]')?.textContent).toContain('Choose a voice');
     expect(container.textContent).not.toContain('English Female');
-    const mia = [...container.querySelectorAll<HTMLElement>('.card[role="button"]')].find(
-      (card) => card.querySelector('strong')?.textContent === 'Mia',
+    const mia = container.querySelector<HTMLInputElement>(
+      'input[name="reading-voice"][value="Mia"]',
     )!;
     await act(async () => {
       mia.click();

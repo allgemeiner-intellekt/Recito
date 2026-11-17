@@ -3,6 +3,9 @@ import type { ProviderConfig, AppSettings, PlaybackState } from './types';
 export const MSG = {
   // Transport controls (content/popup → SW → offscreen)
   PLAY: 'PLAY',
+  RETRY: 'RETRY',
+  SET_VOICE: 'SET_VOICE',
+  RETURN_TO_READING: 'RETURN_TO_READING',
   PAUSE: 'PAUSE',
   RESUME: 'RESUME',
   STOP: 'STOP',
@@ -41,6 +44,7 @@ export const MSG = {
   SYNTHESIZE: 'SYNTHESIZE',
   LIST_VOICES: 'LIST_VOICES',
   VALIDATE_KEY: 'VALIDATE_KEY',
+  TEST_KEY: 'TEST_KEY',
   SET_ACTIVE_PROVIDER: 'SET_ACTIVE_PROVIDER',
 
   // Content ↔ Popup
@@ -80,6 +84,8 @@ export interface WereadCaptureResponse<T> {
 export interface PlayMessage {
   type: typeof MSG.PLAY;
   fromSelection?: boolean;
+  startChunk?: number;
+  startOffset?: number;
 }
 
 export interface PauseMessage {
@@ -198,6 +204,7 @@ export interface WordTimingMessage {
 export interface ExtractContentMessage {
   type: typeof MSG.EXTRACT_CONTENT;
   fromSelection?: boolean;
+  startOffset?: number;
   chunkConfig?: { minWords: number; maxWords: number; splitThreshold: number };
 }
 
@@ -234,6 +241,7 @@ export interface SetActiveProviderMessage {
 
 export interface GetPageInfoMessage {
   type: typeof MSG.GET_PAGE_INFO;
+  ping?: boolean;
 }
 
 export interface StartReadingMessage {
@@ -256,6 +264,7 @@ export interface FailoverNoticeMessage {
   fromConfig: string;
   toConfig: string;
   toConfigName: string;
+  fromConfigName?: string;
 }
 
 // --- Reading Progress Messages ---
@@ -278,6 +287,7 @@ export interface SettingsChangedMessage {
 
 export interface OpenOptionsMessage {
   type: typeof MSG.OPEN_OPTIONS;
+  configId?: string;
 }
 
 export interface ShowToolbarMessage {
@@ -286,6 +296,10 @@ export interface ShowToolbarMessage {
 }
 
 export type ExtensionMessage =
+  | { type: typeof MSG.TEST_KEY; config: ProviderConfig }
+  | { type: typeof MSG.RETRY }
+  | { type: typeof MSG.SET_VOICE; voiceId: string }
+  | { type: typeof MSG.RETURN_TO_READING }
   | PlayMessage
   | PauseMessage
   | ResumeMessage

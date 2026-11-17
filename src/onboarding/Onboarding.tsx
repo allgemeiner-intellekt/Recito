@@ -1,304 +1,178 @@
 import React, { useState } from 'react';
-import { PROVIDER_LIST } from '@providers/registry';
-import type { ProviderConfig } from '@shared/types';
-import { sendMessage } from '@shared/messages';
-import { MSG } from '@shared/messages';
-import { saveProvider, setActiveProviderGroup, getProviderGroupKey, getSettings, saveSettings, generateId } from '@shared/storage';
 import { useTheme } from '@shared/useTheme';
+import { getSettings, saveSettings } from '@shared/storage';
+import { ProviderForm } from '../ui/ProviderForm';
+import { VoiceGrid, useVoiceSample, SAMPLE_TEXT } from '../ui/VoiceGrid';
+import { usePreferences, useVoices } from '../ui/usePreferences';
+import { Icon } from '../ui/Icon';
 
 export function Onboarding() {
   useTheme();
-  const [currentStep, setCurrentStep] = useState(0);
-
-  const handleComplete = async () => {
-    const settings = await getSettings();
-    await saveSettings({ ...settings, onboardingComplete: true });
+  const [step, setStep] = useState(0);
+  const [complete, setComplete] = useState(false);
+  const { active, settings, update, refresh } = usePreferences();
+  const { voices } = useVoices(active);
+  const sample = useVoiceSample();
+  const finish = async () => {
+    const current = await getSettings();
+    await saveSettings({ ...current, onboardingComplete: true });
+    setComplete(true);
   };
-
-  const goNext = () => setCurrentStep((s) => Math.min(s + 1, 2));
-
   return (
-    <div className="onboarding">
-      <StepIndicator current={currentStep} />
-      <div className="onboarding-card" key={currentStep}>
-        {currentStep === 0 && <StepWelcome onNext={goNext} />}
-        {currentStep === 1 && (
-          <StepProvider
-            onNext={async () => {
-              await handleComplete();
-              goNext();
-            }}
-            onSkip={async () => {
-              await handleComplete();
-              goNext();
-            }}
-          />
-        )}
-        {currentStep === 2 && <StepDone />}
-      </div>
-    </div>
-  );
-}
-
-function StepIndicator({ current }: { current: number }) {
-  const steps = [0, 1, 2];
-  return (
-    <div className="step-indicator">
-      {steps.map((i) => (
-        <React.Fragment key={i}>
-          <div className={`step-dot ${i === current ? 'active' : ''} ${i < current ? 'done' : ''}`} />
-          {i < steps.length - 1 && (
-            <div className={`step-connector ${i < current ? 'filled' : ''}`}>
-              <div className="step-connector-fill" />
-            </div>
-          )}
-        </React.Fragment>
-      ))}
-    </div>
-  );
-}
-
-function StepWelcome({ onNext }: { onNext: () => void }) {
-  return (
-    <div className="step-content">
-      <h1 className="step-title">Welcome to Recito</h1>
-      <p className="step-subtitle">Listen to any web page with your own API keys</p>
-
-      <div className="value-cards">
-        <div className="value-card">
-          <div className="value-icon">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-              <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-            </svg>
-          </div>
-          <h3>Bring Your Own Keys</h3>
-          <p>Use MiMo, OpenAI, or a custom OpenAI-compatible TTS service</p>
-        </div>
-
-        <div className="value-card">
-          <div className="value-icon">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-            </svg>
-          </div>
-          <h3>Privacy First</h3>
-          <p>API keys stored locally, no data collection, fully open source</p>
-        </div>
-
-        <div className="value-card">
-          <div className="value-icon">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <polygon points="5 3 19 12 5 21 5 3" />
-            </svg>
-          </div>
-          <h3>Karaoke-Style Reading</h3>
-          <p>Word-by-word highlighting with auto-scroll as you listen</p>
-        </div>
-      </div>
-
-      <button className="btn btn-primary btn-lg" onClick={onNext}>
-        Get Started
-      </button>
-    </div>
-  );
-}
-
-function StepProvider({ onNext, onSkip }: { onNext: () => void; onSkip: () => void }) {
-  const [providerId, setProviderId] = useState('openai');
-  const [apiKey, setApiKey] = useState('');
-  const [baseUrl, setBaseUrl] = useState('');
-  const [testing, setTesting] = useState(false);
-  const [testResult, setTestResult] = useState<'success' | 'error' | null>(null);
-  const [testMessage, setTestMessage] = useState('');
-  const [saved, setSaved] = useState(false);
-
-  const selectedMeta = PROVIDER_LIST.find((p) => p.id === providerId);
-  const isCustom = providerId === 'custom';
-  const canTest = Boolean(apiKey.trim() && (!isCustom || baseUrl.trim()));
-
-  const handleTest = async () => {
-    if (!apiKey.trim()) return;
-    if (isCustom && !baseUrl.trim()) {
-      setTestResult('error');
-      setTestMessage('Base URL is required for a custom provider.');
-      setSaved(false);
-      return;
-    }
-    setTesting(true);
-    setTestResult(null);
-    setTestMessage('');
-
-    const config: ProviderConfig = {
-      id: generateId(),
-      providerId,
-      name: selectedMeta?.name ?? providerId,
-      apiKey: apiKey.trim(),
-      baseUrl: isCustom && baseUrl.trim() ? baseUrl.trim() : undefined,
-    };
-
-    try {
-      const result = await sendMessage<boolean>({
-        type: MSG.VALIDATE_KEY,
-        config,
-      });
-
-      if (result) {
-        setTestResult('success');
-        setTestMessage('Connection successful!');
-
-        // Save provider and set its group as active
-        await saveProvider(config);
-        await setActiveProviderGroup(getProviderGroupKey(config));
-        setSaved(true);
-      } else {
-        setTestResult('error');
-        setTestMessage('Invalid API key. Please check and try again.');
-      }
-    } catch (err) {
-      setTestResult('error');
-      setTestMessage(err instanceof Error ? err.message : 'Connection failed.');
-    } finally {
-      setTesting(false);
-    }
-  };
-
-  return (
-    <div className="step-content">
-      <h1 className="step-title">Add Your First Provider</h1>
-      <p className="step-subtitle">Connect a text-to-speech service to get started</p>
-
-      <div className="provider-form">
-        <label className="form-label">
-          Provider
-          <select
-            className="form-select"
-            value={providerId}
-            onChange={(e) => {
-              setProviderId(e.target.value);
-              setTestResult(null);
-              setTestMessage('');
-              setSaved(false);
-            }}
-          >
-            {PROVIDER_LIST.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        {selectedMeta?.website && (
-          <p className="provider-link">
-            Get your API key at{' '}
-            <a href={selectedMeta.website} target="_blank" rel="noopener noreferrer">
-              {selectedMeta.name}
-            </a>
-          </p>
-        )}
-
-        {isCustom && (
-          <label className="form-label">
-            Base URL
-            <input
-              className="form-input"
-              type="url"
-              placeholder="https://api.example.com/v1"
-              value={baseUrl}
-              onChange={(e) => {
-                setBaseUrl(e.target.value);
-                setTestResult(null);
-                setTestMessage('');
-                setSaved(false);
+    <div className="setup">
+      <div className="setup-in">
+        <span className="wm" style={{ fontSize: 24 }}>
+          Recito
+        </span>
+        <ol className="steps" aria-label="Setup progress">
+          {['Connect a provider', 'Pick a voice', 'Listen'].map((title, i) => (
+            <li
+              key={title}
+              className={step > i ? 'done' : ''}
+              aria-current={step === i ? 'step' : undefined}
+            >
+              {i + 1} · {title}
+            </li>
+          ))}
+        </ol>
+        {complete ? (
+          <>
+            <h1>You're ready to read</h1>
+            <p className="lede">Open an article and press the Recito icon to listen.</p>
+            <Tips />
+            <button className="btn primary" onClick={() => window.close()}>
+              Done
+            </button>
+          </>
+        ) : step === 0 ? (
+          <>
+            <h1>A voice for your reading</h1>
+            <p className="lede">Connect your own provider. Your key stays in this browser.</p>
+            <ProviderForm
+              allowSaveAnyway={false}
+              onSaved={async () => {
+                await refresh();
+                setStep(1);
               }}
             />
-          </label>
-        )}
-
-        <label className="form-label">
-          API Key
-          <input
-            className="form-input"
-            type="password"
-            placeholder="sk-..."
-            value={apiKey}
-            onChange={(e) => {
-              setApiKey(e.target.value);
-              setTestResult(null);
-              setTestMessage('');
-              setSaved(false);
-            }}
-          />
-        </label>
-
-        {testResult && (
-          <div className={`test-result ${testResult}`}>
-            {testResult === 'success' && (
-              <svg className="test-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <polyline points="20 6 9 17 4 12" />
-              </svg>
+            <div className="setup-foot">
+              <button className="link" onClick={finish}>
+                Skip for now
+              </button>
+            </div>
+          </>
+        ) : step === 1 ? (
+          <>
+            <h1>Pick a voice</h1>
+            <p className="lede">Try a few. You can change this any time.</p>
+            <div className="card">
+              <VoiceGrid
+                config={active}
+                selected={settings.activeVoiceId}
+                onSelect={(id) => update({ activeVoiceId: id })}
+              />
+            </div>
+            <div className="setup-foot">
+              <button className="btn" onClick={() => setStep(0)}>
+                Back
+              </button>
+              <button
+                className="btn primary"
+                disabled={
+                  !active ||
+                  !voices.length ||
+                  (!!settings.activeVoiceId && !voices.some((v) => v.id === settings.activeVoiceId))
+                }
+                onClick={() => setStep(2)}
+              >
+                Continue
+              </button>
+              <button className="link" onClick={finish}>
+                Skip for now
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <h1>Hear it for yourself</h1>
+            <p className="lede">Listen while your eyes follow the words.</p>
+            <div className={`sample ${sample.playing ? 'live' : ''}`}>
+              {SAMPLE_TEXT.split(/\s+/).map((word, i) => (
+                <React.Fragment key={i}>
+                  <span className={sample.word === i ? 'on' : ''}>{word}</span>{' '}
+                </React.Fragment>
+              ))}
+            </div>
+            {sample.error && (
+              <p role="alert" className="error-text">
+                {sample.error}
+              </p>
             )}
-            {testMessage}
-          </div>
+            <div className="setup-foot">
+              <button
+                className="btn"
+                onClick={() => {
+                  sample.stop();
+                  setStep(1);
+                }}
+              >
+                Back
+              </button>
+              <button
+                className="btn primary"
+                disabled={sample.busy || !active || !voices.length}
+                onClick={() => {
+                  if (sample.playing) sample.stop();
+                  else if (active)
+                    void sample.play(
+                      active,
+                      voices.find((v) => v.id === settings.activeVoiceId) ?? voices[0],
+                    );
+                }}
+              >
+                <Icon name={sample.playing ? 'pause' : 'play'} size={18} />
+                {sample.busy
+                  ? 'Preparing your voice…'
+                  : sample.playing
+                    ? 'Stop sample'
+                    : 'Listen to a sample'}
+              </button>
+              <button
+                className="btn"
+                disabled={!sample.heard}
+                onClick={() => {
+                  sample.stop();
+                  void finish();
+                }}
+              >
+                Finish setup
+              </button>
+              <button
+                className="link"
+                onClick={() => {
+                  sample.stop();
+                  void finish();
+                }}
+              >
+                Skip for now
+              </button>
+            </div>
+            {sample.heard && <Tips />}
+          </>
         )}
-
-        <button
-          className="btn btn-primary full-width"
-          onClick={saved ? onNext : handleTest}
-          disabled={testing || (!saved && !canTest)}
-        >
-          {testing ? 'Testing...' : saved ? 'Continue' : 'Test Connection'}
-        </button>
       </div>
-
-      <button className="skip-link" onClick={onSkip}>
-        Skip for now
-      </button>
     </div>
   );
 }
-
-function StepDone() {
-  const handleOpenSettings = () => {
-    chrome.runtime.openOptionsPage();
-  };
-
-  const handleStartReading = () => {
-    window.close();
-  };
-
+function Tips() {
   return (
-    <div className="step-content">
-      <div className="done-icon">
-        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ strokeDasharray: 60, strokeDashoffset: 0 }}>
-          <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
-          <polyline points="22 4 12 14.01 9 11.01" />
-        </svg>
-      </div>
-
-      <h1 className="step-title">You're All Set!</h1>
-      <p className="step-subtitle">Recito is ready to use</p>
-
-      <div className="tips-card">
-        <h3>Quick Tips</h3>
-        <ul className="tips-list">
-          <li>Click the extension icon or use the popup to start reading</li>
-          <li>
-            Use <kbd>Space</kbd> to play/pause, arrow keys to skip
-          </li>
-          <li>Customize highlighting colors and voice in Settings</li>
-        </ul>
-      </div>
-
-      <div className="done-actions">
-        <button className="btn btn-secondary" onClick={handleOpenSettings}>
-          Open Settings
-        </button>
-        <button className="btn btn-primary" onClick={handleStartReading}>
-          Start Reading
-        </button>
-      </div>
-    </div>
+    <ul className="tips">
+      <li>
+        <span>Start or pause from any page</span>
+        <kbd>Alt Shift Space</kbd>
+      </li>
+      <li>Click text while reading to jump there.</li>
+      <li>Pin Recito in Chrome's extensions menu to keep the icon close.</li>
+    </ul>
   );
 }

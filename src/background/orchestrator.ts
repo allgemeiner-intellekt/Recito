@@ -1,7 +1,14 @@
 import { MSG, sendTabMessage, type ExtensionMessage } from '@shared/messages';
-import type { TextChunk } from '@shared/types';
+import type { TextChunk, PlaybackError } from '@shared/types';
 import { getProvider } from '@providers/registry';
-import { getActiveProvider, getSettings, saveProgress, getProgress, clearProgress } from '@shared/storage';
+import {
+  getActiveProvider,
+  getSettings,
+  saveSettings,
+  saveProgress,
+  getProgress,
+  clearProgress,
+} from '@shared/storage';
 import { getChunkLimits } from '@providers/registry';
 import { playbackState } from './playback-state';
 import { ensureOffscreenDocument } from './offscreen-manager';
@@ -12,11 +19,7 @@ import { getCachedVoices, setCachedVoices } from '@providers/voice-cache';
 import { PlaybackLatencyTracker } from './latency-metrics';
 import { evictAudioCache } from './playback-cache';
 import { waitForChunkComplete } from './chunk-completion';
-import {
-  markFailed,
-  getNextCandidate,
-  type PlaybackSession,
-} from './failover';
+import { markFailed, clearHealth, getNextCandidate, type PlaybackSession } from './failover';
 
 interface SynthesizedChunk {
   chunkIndex: number;
@@ -29,11 +32,14 @@ interface SynthesizedChunk {
 let activeTabId: number | null = null;
 let currentPageUrl: string | undefined;
 const prefetchCache = new Map<number, SynthesizedChunk>();
-const inFlightSyntheses = new Map<number, {
-  generation: number;
-  promise: Promise<SynthesizedChunk>;
-  allowFailover: boolean;
-}>();
+const inFlightSyntheses = new Map<
+  number,
+  {
+    generation: number;
+    promise: Promise<SynthesizedChunk>;
+    allowFailover: boolean;
+  }
+>();
 const MAX_CACHE_SIZE = 6;
 const MAX_CACHE_BASE64_CHARS = 24 * 1024 * 1024;
 let abortController: AbortController | null = null;
@@ -43,6 +49,12 @@ const latencyTracker = new PlaybackLatencyTracker();
 // Session binding — locks provider + voice for the duration of a playback session
 let currentSession: PlaybackSession | null = null;
 let sessionGeneration = 0;
+let startRequest = 0;
+let currentChunkWordCount = 0;
+let completedElapsed = 0;
+let observedWords = 0;
+let observedBaseSeconds = 0;
+const failedKeys = new Map<string, string>();
 
 // Server-side speed at which the currently playing chunk was synthesized.
 // Needed to compute the correct client-side residual when the user changes speed mid-chunk.
@@ -69,18 +81,22 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
 }
 
 // Send a message to the offscreen document (uses OFFSCREEN_ prefix to avoid routing loops)
-async function sendToOffscreen(message: Record<string, unknown>, ensureDocument = true): Promise<void> {
+async function sendToOffscreen(
+  message: Record<string, unknown>,
+  ensureDocument = true,
+): Promise<void> {
   if (ensureDocument) {
     await ensureOffscreenDocument();
   }
-  chrome.runtime.sendMessage(message).catch(console.error);
+  const response = await chrome.runtime.sendMessage(message);
+  if (response?.error) throw new Error(response.error);
 }
 
 // Ensure the content script is injected into the tab
 export async function ensureContentScript(tabId: number): Promise<void> {
   try {
     // Try pinging the content script
-    await chrome.tabs.sendMessage(tabId, { type: MSG.GET_PAGE_INFO });
+    await chrome.tabs.sendMessage(tabId, { type: MSG.GET_PAGE_INFO, ping: true });
     return;
   } catch {
     // The page may have been opened before the extension was installed/reloaded.
@@ -88,20 +104,27 @@ export async function ensureContentScript(tabId: number): Promise<void> {
 
   // CRXJS rewrites this entry to a built JS loader. The first entry can be
   // WeRead's MAIN-world capture script, which is not the message receiver.
-  const files = chrome.runtime.getManifest().content_scripts?.find((script) =>
-    (!('world' in script) || script.world !== 'MAIN') && script.matches?.includes('<all_urls>') && script.js?.length,
-  )?.js;
-  if (!files?.length) throw new Error('No generic content script entry found in the extension manifest.');
+  const files = chrome.runtime
+    .getManifest()
+    .content_scripts?.find(
+      (script) =>
+        (!('world' in script) || script.world !== 'MAIN') &&
+        script.matches?.includes('<all_urls>') &&
+        script.js?.length,
+    )?.js;
+  if (!files?.length)
+    throw new Error('No generic content script entry found in the extension manifest.');
   await chrome.scripting.executeScript({ target: { tabId }, files });
 
   // executeScript completes before the loader's dynamic import necessarily
   // finishes. Wait for the actual message receiver, not a fixed startup delay.
   for (let attempt = 0; attempt < 20; attempt++) {
     try {
-      await chrome.tabs.sendMessage(tabId, { type: MSG.GET_PAGE_INFO });
+      await chrome.tabs.sendMessage(tabId, { type: MSG.GET_PAGE_INFO, ping: true });
       return;
     } catch (error) {
-      if (attempt === 19) throw new Error('Content script did not initialize after injection.', { cause: error });
+      if (attempt === 19)
+        throw new Error('Content script did not initialize after injection.', { cause: error });
       await new Promise((resolve) => setTimeout(resolve, 100));
     }
   }
@@ -111,7 +134,7 @@ export async function ensureContentScript(tabId: number): Promise<void> {
  * Resolve the provider config and voice for a new session.
  * Locks these at session start so mid-read settings changes don't affect playback.
  */
-async function initSession(): Promise<PlaybackSession> {
+async function initSession(request: number): Promise<PlaybackSession> {
   const providerConfig = await getActiveProvider();
   if (!providerConfig) {
     throw new Error('No TTS provider configured. Please add one in Settings.');
@@ -130,13 +153,16 @@ async function initSession(): Promise<PlaybackSession> {
   const voiceId = settings.activeVoiceId;
   const selectedVoice = voices.find((v) => v.id === voiceId);
   if (providerConfig.providerId === 'mimo' && voiceId && !selectedVoice) {
-    throw new Error('Your saved MiMo voice is no longer listed. Choose a voice in Settings > Voices before playing.');
+    throw new Error(
+      'Your saved MiMo voice is no longer listed. Choose a voice in Settings > Voices before playing.',
+    );
   }
   const voice = selectedVoice ?? voices[0];
   if (!voice) {
     throw new Error('No voice available for this provider.');
   }
 
+  if (request !== startRequest) throw new DOMException('Superseded reading request', 'AbortError');
   sessionGeneration++;
   const session: PlaybackSession = {
     config: providerConfig,
@@ -161,29 +187,39 @@ async function initSession(): Promise<PlaybackSession> {
  *
  * Each step communicates with the content script via typed messages.
  */
-export async function startPlayback(tabId: number, fromSelection = false): Promise<void> {
-  // Abort any ongoing playback
-  stopPlayback();
+export async function startPlayback(
+  tabId: number,
+  fromSelection = true,
+  startChunk?: number,
+  startOffset?: number,
+): Promise<void> {
+  // Release the old page's annotations when moving the session.
+  if (activeTabId !== null && activeTabId !== tabId) {
+    sendTabMessage(activeTabId, { type: MSG.STOP }).catch(() => {});
+  }
+  stopPlayback(true);
+  const request = ++startRequest;
   activeTabId = tabId;
   abortController = new AbortController();
   latencyTracker.mark('first-start', null);
 
-  playbackState.setStatus('loading');
+  playbackState.update({ status: 'loading', error: undefined, tabId });
 
   // Ensure content script is available
   try {
     await ensureContentScript(tabId);
   } catch (err) {
-    playbackState.setStatus('idle');
-    console.error('Cannot inject content script:', err);
+    failPlayback(err, 'extraction');
     return;
   }
 
+  if (request !== startRequest) return;
   // Initialize session — lock provider + voice
   try {
-    await initSession();
+    await initSession(request);
   } catch (err) {
-    playbackState.setStatus('idle');
+    if (request !== startRequest) return;
+    failPlayback(err, (await getActiveProvider()) ? 'provider' : 'no-provider');
     const errorMsg = err instanceof Error ? err.message : String(err);
     console.error('Session init failed:', errorMsg);
     if (activeTabId) {
@@ -196,37 +232,60 @@ export async function startPlayback(tabId: number, fromSelection = false): Promi
     return;
   }
 
+  const settings = await getSettings();
+  const speedRange = currentSession ? PROVIDER_SPEED_RANGES[currentSession.providerId] : null;
+  setSpeed(
+    speedRange
+      ? Math.max(speedRange.min, Math.min(speedRange.max, settings.playback.defaultSpeed))
+      : 1,
+  );
+  setVolume(settings.playback.defaultVolume);
+
   // Step 1: Extract content from the page
   let extractResult: {
     title?: string;
     wordCount?: number;
     totalChunks?: number;
     error?: string;
+    scope?: { kind: 'page' | 'selection'; wordCount: number };
+    excerpt?: string;
+    startChunk?: number;
+    chunkWordCounts?: number[];
   };
   try {
     const chunkConfig = currentSession ? getChunkLimits(currentSession.providerId) : undefined;
-    extractResult = await sendTabMessage(tabId, { type: MSG.EXTRACT_CONTENT, fromSelection, chunkConfig });
+    extractResult = await sendTabMessage(tabId, {
+      type: MSG.EXTRACT_CONTENT,
+      fromSelection,
+      chunkConfig,
+      startOffset,
+    } as ExtensionMessage);
   } catch (err) {
-    playbackState.setStatus('idle');
-    console.error('Failed to extract content:', err);
+    failPlayback(err, 'extraction');
     return;
   }
 
+  if (request !== startRequest) return;
   if (extractResult.error || !extractResult.totalChunks) {
-    playbackState.setStatus('idle');
-    console.error('Extraction failed:', extractResult.error ?? 'No content');
+    failPlayback(new Error(extractResult.error ?? 'No content'), 'extraction');
     return;
   }
 
   // Check for saved reading progress
-  let startIndex = 0;
+  let startIndex = Math.max(0, startChunk ?? extractResult.startChunk ?? 0);
   currentPageUrl = undefined;
   try {
     currentPageUrl = await sendTabMessage<string>(tabId, { type: MSG.GET_PAGE_URL });
   } catch {
     // Content script may not respond
   }
-  if (currentPageUrl && !fromSelection) {
+  if (extractResult.scope?.kind === 'selection') currentPageUrl = undefined;
+  if (
+    currentPageUrl &&
+    extractResult.scope?.kind !== 'selection' &&
+    startChunk === undefined &&
+    startOffset === undefined
+  ) {
     const saved = await getProgress(currentPageUrl);
     if (saved && saved.chunkIndex > 0 && saved.chunkIndex < extractResult.totalChunks) {
       startIndex = saved.chunkIndex;
@@ -239,7 +298,15 @@ export async function startPlayback(tabId: number, fromSelection = false): Promi
 
   playbackState.update({
     totalChunks: extractResult.totalChunks,
-    currentChunkIndex: startIndex,
+    currentChunkIndex: Math.min(startIndex, extractResult.totalChunks - 1),
+    chunkWordCounts: extractResult.chunkWordCounts,
+    scope: extractResult.scope ?? { kind: 'page', wordCount: extractResult.wordCount ?? 0 },
+    excerpt: extractResult.excerpt,
+    tabId,
+    providerId: currentSession?.providerId,
+    providerName: currentSession ? getProvider(currentSession.providerId).name : undefined,
+    voiceId: currentSession?.voice.id,
+    error: undefined,
   });
 
   // Step 2: Start the playback loop
@@ -262,7 +329,13 @@ export function pausePlayback(): void {
   sendToOffscreen({ type: MSG.OFFSCREEN_PAUSE }).catch(() => {});
 }
 
-export function stopPlayback(): void {
+export function stopPlayback(preserveProgress = false): void {
+  startRequest++;
+  sessionGeneration++;
+  completedElapsed = 0;
+  observedWords = 0;
+  observedBaseSeconds = 0;
+  failedKeys.clear();
   abortController?.abort();
   abortController = null;
   prefetchCache.clear();
@@ -270,10 +343,8 @@ export function stopPlayback(): void {
   offscreenPrimedChunkIndex = null;
   latencyTracker.cancel();
   // Clear saved progress on explicit stop — user is done with this article
-  if (currentPageUrl) {
-    clearProgress(currentPageUrl).catch(() => {});
-    currentPageUrl = undefined;
-  }
+  if (currentPageUrl && !preserveProgress) clearProgress(currentPageUrl).catch(() => {});
+  currentPageUrl = undefined;
   currentSession = null;
   currentChunkSynthesizedSpeed = 1.0;
   stopWordTimingRelay();
@@ -314,7 +385,13 @@ export async function skipToChunk(chunkIndex: number): Promise<void> {
   offscreenPrimedChunkIndex = null;
   evictAudioCache(prefetchCache, chunkIndex, MAX_CACHE_SIZE, MAX_CACHE_BASE64_CHARS);
 
-  playbackState.update({ currentChunkIndex: chunkIndex, status: 'loading' });
+  chunkIndex = Math.max(0, Math.min(state.totalChunks - 1, chunkIndex));
+  playbackState.update({
+    currentChunkIndex: chunkIndex,
+    status: 'loading',
+    error: undefined,
+    chunkProgress: 0,
+  });
   await ensureOffscreenDocument();
   await playChunksSequentially(activeTabId, chunkIndex, state.totalChunks, currentPageUrl);
 }
@@ -324,9 +401,8 @@ export function setSpeed(speed: number): void {
   // Compute residual playback rate for the currently-playing chunk.
   // The chunk was synthesized at currentChunkSynthesizedSpeed; the offscreen
   // player covers the gap between that and the user's desired speed.
-  const residual = currentChunkSynthesizedSpeed !== 0
-    ? speed / currentChunkSynthesizedSpeed
-    : speed;
+  const residual =
+    currentChunkSynthesizedSpeed !== 0 ? speed / currentChunkSynthesizedSpeed : speed;
   sendToOffscreen({ type: MSG.OFFSCREEN_SET_SPEED, speed: residual }).catch(() => {});
 }
 
@@ -346,11 +422,16 @@ async function playChunksSequentially(
   for (let i = startIndex; i < totalChunks; i++) {
     if (signal?.aborted) return;
 
-    playbackState.update({ currentChunkIndex: i, status: 'loading' });
+    const cached = prefetchCache.get(i);
+    playbackState.update({
+      currentChunkIndex: i,
+      status: cached ? 'playing' : 'loading',
+      currentTime: 0,
+      chunkProgress: 0,
+    });
 
     // Synthesize current chunk (or use cached — kept for backward skip)
     let synthesized: SynthesizedChunk;
-    const cached = prefetchCache.get(i);
     if (cached) {
       synthesized = cached;
     } else {
@@ -367,7 +448,7 @@ async function playChunksSequentially(
             chunkIndex: i,
           }).catch(() => {});
         }
-        playbackState.setStatus('idle');
+        failPlayback(err, 'provider', i);
         return;
       }
     }
@@ -389,19 +470,23 @@ async function playChunksSequentially(
     playbackState.setStatus('playing');
     currentChunkSynthesizedSpeed = synthesized.synthesizedSpeed;
     const currentSpeed = playbackState.getState().speed;
-    const residual = currentChunkSynthesizedSpeed !== 0
-      ? currentSpeed / currentChunkSynthesizedSpeed
-      : currentSpeed;
+    const residual =
+      currentChunkSynthesizedSpeed !== 0
+        ? currentSpeed / currentChunkSynthesizedSpeed
+        : currentSpeed;
     await sendToOffscreen({ type: MSG.OFFSCREEN_SET_SPEED, speed: residual }, false);
     if (offscreenPrimedChunkIndex === i) {
       offscreenPrimedChunkIndex = null;
     } else {
-      await sendToOffscreen({
-        type: MSG.OFFSCREEN_PLAY,
-        audioBase64: synthesized.audioBase64,
-        chunkIndex: i,
-        format: synthesized.format,
-      }, false);
+      await sendToOffscreen(
+        {
+          type: MSG.OFFSCREEN_PLAY,
+          audioBase64: synthesized.audioBase64,
+          chunkIndex: i,
+          format: synthesized.format,
+        },
+        false,
+      );
     }
 
     startLookahead(tabId, i, totalChunks, signal);
@@ -418,6 +503,8 @@ async function playChunksSequentially(
     }
     if (signal?.aborted) return;
     if (chunkResult && 'text' in chunkResult) {
+      currentChunkWordCount = chunkResult.wordCount || chunkResult.text.split(/\s+/).length;
+      playbackState.update({ excerpt: chunkResult.text });
       startWordTimingRelay(tabId, i, chunkResult.text, synthesized.wordTimings);
     }
 
@@ -426,9 +513,15 @@ async function playChunksSequentially(
 
     if (signal?.aborted) return;
 
+    const finishedState = playbackState.getState();
+    observedWords += currentChunkWordCount;
+    observedBaseSeconds += finishedState.duration * currentChunkSynthesizedSpeed;
+    completedElapsed = finishedState.elapsedSeconds ?? completedElapsed;
     // Save reading progress
     if (pageUrl) {
-      saveProgress({ url: pageUrl, chunkIndex: i + 1, totalChunks, timestamp: Date.now() }).catch(() => {});
+      saveProgress({ url: pageUrl, chunkIndex: i + 1, totalChunks, timestamp: Date.now() }).catch(
+        () => {},
+      );
     }
   }
 
@@ -437,6 +530,7 @@ async function playChunksSequentially(
     clearProgress(pageUrl).catch(() => {});
   }
   stopPlayback();
+  playbackState.update({ notice: 'Finished. Thanks for listening.' });
 }
 
 /**
@@ -455,15 +549,17 @@ function getOrStartSynthesis(
   const existing = inFlightSyntheses.get(chunkIndex);
   if (existing && existing.generation === generation) {
     if (allowFailover && !existing.allowFailover) {
-      const promise = existing.promise.catch((err) => {
-        if (signal?.aborted) throw err;
-        return synthesizeChunkWithFailover(tabId, chunkIndex, signal);
-      }).finally(() => {
-        const current = inFlightSyntheses.get(chunkIndex);
-        if (current?.promise === promise) {
-          inFlightSyntheses.delete(chunkIndex);
-        }
-      });
+      const promise = existing.promise
+        .catch((err) => {
+          if (signal?.aborted) throw err;
+          return synthesizeChunkWithFailover(tabId, chunkIndex, signal);
+        })
+        .finally(() => {
+          const current = inFlightSyntheses.get(chunkIndex);
+          if (current?.promise === promise) {
+            inFlightSyntheses.delete(chunkIndex);
+          }
+        });
 
       inFlightSyntheses.set(chunkIndex, { generation, promise, allowFailover });
       return promise;
@@ -472,9 +568,10 @@ function getOrStartSynthesis(
     return existing.promise;
   }
 
-  const promise = (allowFailover
-    ? synthesizeChunkWithFailover(tabId, chunkIndex, signal)
-    : synthesizeChunk(tabId, chunkIndex, signal)
+  const promise = (
+    allowFailover
+      ? synthesizeChunkWithFailover(tabId, chunkIndex, signal)
+      : synthesizeChunk(tabId, chunkIndex, signal)
   ).finally(() => {
     const current = inFlightSyntheses.get(chunkIndex);
     if (current?.promise === promise) {
@@ -530,12 +627,15 @@ function startLookahead(
 
         if (!canScheduleNext) return;
 
-        await sendToOffscreen({
-          type: MSG.OFFSCREEN_SCHEDULE_NEXT,
-          audioBase64: result.audioBase64,
-          chunkIndex: prefetchIndex,
-          format: result.format,
-        }, false);
+        await sendToOffscreen(
+          {
+            type: MSG.OFFSCREEN_SCHEDULE_NEXT,
+            audioBase64: result.audioBase64,
+            chunkIndex: prefetchIndex,
+            format: result.format,
+          },
+          false,
+        );
 
         if (!signal?.aborted && sessionGeneration === generation) {
           offscreenPrimedChunkIndex = prefetchIndex;
@@ -575,15 +675,15 @@ async function synthesizeChunk(
   // the residual is handled client-side via playbackRate.
   const rawSpeed = playbackState.getState().speed;
   const range = PROVIDER_SPEED_RANGES[session.config.providerId] ?? null;
-  const serverSpeed = range
-    ? Math.min(Math.max(rawSpeed, range.min), range.max)
-    : 1.0;
+  const serverSpeed = range ? Math.min(Math.max(rawSpeed, range.min), range.max) : 1.0;
 
   const result = await provider.synthesize(chunk.text, session.voice, session.config, {
     speed: serverSpeed,
     signal,
   });
 
+  if (!signal?.aborted && currentSession?.generation === session.generation)
+    clearHealth(session.config.id);
   return {
     chunkIndex,
     audioBase64: arrayBufferToBase64(result.audioData),
@@ -610,6 +710,7 @@ async function synthesizeChunkWithFailover(
   signal?: AbortSignal,
 ): Promise<SynthesizedChunk> {
   let attempts = 0;
+  let lastError: unknown;
 
   while (attempts < MAX_FAILOVER_ATTEMPTS) {
     if (signal?.aborted) {
@@ -623,6 +724,8 @@ async function synthesizeChunkWithFailover(
         throw err;
       }
       attempts++;
+      lastError = err;
+      if (currentSession) failedKeys.set(currentSession.config.id, currentSession.config.name);
 
       // Non-ApiError or non-retryable → stop immediately
       if (!(err instanceof ApiError) || !err.retryable) {
@@ -633,6 +736,7 @@ async function synthesizeChunkWithFailover(
       }
 
       const failedConfigId = currentSession!.config.id;
+      const failedConfigName = currentSession!.config.name;
 
       // For 5xx/network errors, retry same config once before failing over
       if ((err.status >= 500 || err.status === 0) && attempts === 1) {
@@ -646,9 +750,7 @@ async function synthesizeChunkWithFailover(
       // Try to find a backup
       const candidate = await getNextCandidate(currentSession!, failedConfigId);
       if (!candidate) {
-        throw new Error(
-          `All API keys for ${currentSession!.providerId} exhausted. Last error: ${err.message}`,
-        );
+        throw err;
       }
 
       // Switch session to the backup config
@@ -663,11 +765,15 @@ async function synthesizeChunkWithFailover(
         generation: sessionGeneration,
       };
 
+      playbackState.update({
+        notice: `${failedConfigName} is resting. Switched to ${candidate.name}.`,
+      });
       // Notify content script of failover
       if (activeTabId) {
         sendTabMessage(activeTabId, {
           type: MSG.FAILOVER_NOTICE,
           fromConfig: failedConfigId,
+          fromConfigName: failedConfigName,
           toConfig: candidate.id,
           toConfigName: candidate.name,
         } as ExtensionMessage).catch(() => {});
@@ -675,7 +781,7 @@ async function synthesizeChunkWithFailover(
     }
   }
 
-  throw new Error('Max failover attempts exceeded.');
+  throw lastError ?? new Error('Max failover attempts exceeded.');
 }
 
 // Handle progress messages from offscreen
@@ -694,8 +800,90 @@ export function handlePlaybackProgress(
       currentTime,
       duration,
       chunkProgress: duration > 0 ? currentTime / duration : 0,
+      elapsedSeconds:
+        completedElapsed +
+        currentTime / (playbackState.getState().speed / currentChunkSynthesizedSpeed),
+      estimatedSeconds:
+        observedWords > 0 && observedBaseSeconds > 0
+          ? (((playbackState.getState().scope?.wordCount ?? 0) / observedWords) *
+              observedBaseSeconds) /
+            playbackState.getState().speed
+          : undefined,
     });
     // Drive word highlighting from real playback progress
     onPlaybackProgress(chunkIndex, currentTime, duration);
   }
+}
+
+export function failPlayback(
+  error: unknown,
+  fallback: PlaybackError['kind'] = 'provider',
+  chunkIndex = playbackState.getState().currentChunkIndex,
+): void {
+  const httpStatus = error instanceof ApiError ? error.status : undefined;
+  const kind: PlaybackError['kind'] =
+    httpStatus === 401 || httpStatus === 403
+      ? 'auth'
+      : httpStatus === 429
+        ? 'rate-limited'
+        : httpStatus === 0
+          ? 'network'
+          : error instanceof TypeError
+            ? 'network'
+            : fallback;
+  abortController?.abort();
+  stopWordTimingRelay();
+  playbackState.update({
+    status: 'error',
+    error: {
+      kind,
+      httpStatus,
+      chunkIndex,
+      retryAt:
+        error instanceof ApiError && error.retryAfterMs
+          ? Date.now() + error.retryAfterMs
+          : undefined,
+      configNames: failedKeys.size
+        ? [...failedKeys.values()]
+        : currentSession
+          ? [currentSession.config.name]
+          : undefined,
+      configIds: failedKeys.size
+        ? [...failedKeys.keys()]
+        : currentSession
+          ? [currentSession.config.id]
+          : undefined,
+    },
+  });
+  sendToOffscreen({ type: MSG.OFFSCREEN_STOP }).catch(() => {});
+  if (currentPageUrl)
+    saveProgress({
+      url: currentPageUrl,
+      chunkIndex,
+      totalChunks: playbackState.getState().totalChunks,
+      timestamp: Date.now(),
+    }).catch(() => {});
+}
+export async function retryPlayback(): Promise<void> {
+  const state = playbackState.getState();
+  if (state.status !== 'error' || activeTabId === null) return;
+  if (currentSession && state.totalChunks)
+    await skipToChunk(state.error?.chunkIndex ?? state.currentChunkIndex);
+  else await startPlayback(activeTabId, state.scope?.kind === 'selection', state.error?.chunkIndex);
+}
+export async function changeVoice(voiceId: string): Promise<void> {
+  const settings = await getSettings();
+  await saveSettings({ ...settings, activeVoiceId: voiceId });
+  if (!currentSession || activeTabId === null) return;
+  const session = currentSession;
+  const provider = getProvider(session.providerId);
+  const voice = (await provider.listVoices(session.config)).find((v) => v.id === voiceId);
+  if (currentSession !== session) return;
+  if (!voice) throw new Error('Voice not found');
+  abortController?.abort();
+  sessionGeneration++;
+  currentSession = { ...currentSession, voice, generation: sessionGeneration };
+  prefetchCache.clear();
+  playbackState.update({ voiceId });
+  await skipToChunk(playbackState.getState().currentChunkIndex);
 }

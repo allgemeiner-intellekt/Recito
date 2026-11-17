@@ -4,13 +4,14 @@ import { MSG, sendMessage } from '@shared/messages';
 import { SPEED_PRESETS, PROVIDER_SPEED_RANGES, filterPresetsForRange } from '@shared/constants';
 
 export interface ToolbarState {
+  snapshot: PlaybackState;
   // Playback
   playbackStatus: PlaybackStatus;
   currentChunkIndex: number;
   totalChunks: number;
   chunkProgress: number;
-  elapsedTime: number;       // accumulated seconds from completed chunks
-  currentChunkTime: number;  // current chunk's currentTime in seconds
+  elapsedTime: number; // accumulated seconds from completed chunks
+  currentChunkTime: number; // current chunk's currentTime in seconds
   speed: number;
   volume: number;
 
@@ -54,6 +55,16 @@ export interface ToolbarState {
 }
 
 export const useToolbarStore = create<ToolbarState>((set, get) => ({
+  snapshot: {
+    status: 'idle',
+    currentChunkIndex: 0,
+    totalChunks: 0,
+    chunkProgress: 0,
+    currentTime: 0,
+    duration: 0,
+    speed: 1,
+    volume: 1,
+  },
   playbackStatus: 'idle',
   currentChunkIndex: 0,
   totalChunks: 0,
@@ -117,7 +128,7 @@ export const useToolbarStore = create<ToolbarState>((set, get) => ({
 
   cycleSpeed: () => {
     const { speed, activeProviderId } = get();
-    const range = activeProviderId ? PROVIDER_SPEED_RANGES[activeProviderId] ?? null : null;
+    const range = activeProviderId ? (PROVIDER_SPEED_RANGES[activeProviderId] ?? null) : null;
     const presets = range ? filterPresetsForRange(range.min, range.max) : SPEED_PRESETS;
     if (presets.length === 0) return;
     const idx = presets.indexOf(speed);
@@ -149,7 +160,18 @@ export const useToolbarStore = create<ToolbarState>((set, get) => ({
 
   _setPlaybackStatus: (status) => set({ playbackStatus: status }),
   _setChunkProgress: (progress, currentTime) =>
-    set((s) => ({ chunkProgress: progress, currentChunkTime: currentTime ?? s.currentChunkTime })),
+    set((s) => ({
+      chunkProgress: progress,
+      currentChunkTime: currentTime ?? s.currentChunkTime,
+      snapshot:
+        Math.floor(currentTime ?? 0) === Math.floor(s.snapshot.currentTime)
+          ? s.snapshot
+          : {
+              ...s.snapshot,
+              chunkProgress: progress,
+              currentTime: currentTime ?? s.currentChunkTime,
+            },
+    })),
   _addChunkDuration: (duration) =>
     set((s) => ({ elapsedTime: s.elapsedTime + duration, currentChunkTime: 0 })),
   _setCurrentChunk: (index, total) =>
@@ -163,6 +185,7 @@ export const useToolbarStore = create<ToolbarState>((set, get) => ({
   },
   _syncPlaybackState: (state) =>
     set((s) => ({
+      snapshot: state,
       playbackStatus: state.status,
       currentChunkIndex: state.currentChunkIndex,
       totalChunks: state.totalChunks,

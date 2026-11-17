@@ -1,21 +1,25 @@
 import { ensureOffscreenDocument } from './offscreen-manager';
 import { routeMessage } from './message-router';
 import { playbackState } from './playback-state';
-import { cleanOldProgress, getActiveProvider, getSettings } from '@shared/storage';
+import { cleanOldProgress, getSettings } from '@shared/storage';
 import { MSG, sendTabMessage } from '@shared/messages';
+import { connectPopup } from './popup-connection';
 import { updateIcon } from './icon-renderer';
 import {
   startPlayback,
+  failPlayback,
   pausePlayback,
   resumePlayback,
   stopPlayback,
   skipForward,
   skipBackward,
   getActiveTab,
-  ensureContentScript,
 } from './orchestrator';
 
+chrome.runtime.onConnect.addListener(connectPopup);
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (typeof message.type === 'string' && message.type.startsWith('OFFSCREEN_')) return false;
   routeMessage(message, sender, sendResponse);
   return true; // keep channel open for async response
 });
@@ -42,8 +46,19 @@ chrome.alarms.onAlarm.addListener((alarm) => {
 });
 
 let lastContentStateKey = '';
+let noticeTimer: ReturnType<typeof setTimeout> | undefined;
+let lastNotice: string | undefined;
 
 playbackState.onStateChange((state) => {
+  if (state.notice !== lastNotice) {
+    lastNotice = state.notice;
+    clearTimeout(noticeTimer);
+    if (state.notice)
+      noticeTimer = setTimeout(
+        () => playbackState.update({ notice: undefined }),
+        state.notice.startsWith('Finished') ? 5000 : 7000,
+      );
+  }
   if (state.status === 'playing' || state.status === 'loading') {
     chrome.alarms.create('ir-keepalive', { periodInMinutes: 0.4 });
   } else if (state.status === 'idle') {
@@ -56,6 +71,10 @@ playbackState.onStateChange((state) => {
     state.totalChunks,
     state.speed,
     state.volume,
+    JSON.stringify(state.error),
+    state.excerpt,
+    state.notice,
+    Math.floor(state.currentTime),
   ].join('|');
 
   if (contentStateKey === lastContentStateKey) return;
@@ -76,23 +95,23 @@ chrome.commands.onCommand.addListener(async (command) => {
       if (status === 'playing') {
         pausePlayback();
       } else if (status === 'paused') {
-        resumePlayback().catch(console.error);
+        resumePlayback().catch((error) => failPlayback(error));
       } else {
         // Start playback on the active tab
         const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
         if (tab?.id) {
-          startPlayback(tab.id).catch(console.error);
+          startPlayback(tab.id).catch((error) => failPlayback(error));
         }
       }
       break;
     case 'skip-forward':
       if (status === 'playing' || status === 'paused') {
-        skipForward().catch(console.error);
+        skipForward().catch((error) => failPlayback(error));
       }
       break;
     case 'skip-backward':
       if (status === 'playing' || status === 'paused') {
-        skipBackward().catch(console.error);
+        skipBackward().catch((error) => failPlayback(error));
       }
       break;
   }
@@ -118,7 +137,7 @@ chrome.action.onClicked.addListener(async (tab) => {
   }
 
   if (status === 'paused' && activeTab === tab.id) {
-    resumePlayback().catch(console.error);
+    resumePlayback().catch((error) => failPlayback(error));
     return;
   }
 
@@ -126,14 +145,6 @@ chrome.action.onClicked.addListener(async (tab) => {
 
   // Idle (or switched tab) → start reading
   try {
-    const provider = await getActiveProvider();
-    if (!provider) {
-      // No provider configured — show toolbar with error, then open settings
-      await ensureContentScript(tab.id);
-      sendTabMessage(tab.id, { type: MSG.SHOW_TOOLBAR, error: 'No TTS provider configured' }).catch(() => {});
-      setTimeout(() => chrome.runtime.openOptionsPage(), 1000);
-      return;
-    }
     await startPlayback(tab.id);
   } catch (err) {
     console.error('Icon click: failed to start playback', err);
@@ -151,10 +162,14 @@ function initializeSettingsMenu(): void {
       console.error('[Recito] Could not reset settings menu:', resetError.message);
       return;
     }
-    chrome.contextMenus.create({ id: 'ir-settings', title: 'Recito Settings', contexts: ['action'] }, () => {
-      const createError = chrome.runtime.lastError;
-      if (createError) console.error('[Recito] Could not create settings menu:', createError.message);
-    });
+    chrome.contextMenus.create(
+      { id: 'ir-settings', title: 'Recito Settings', contexts: ['action'] },
+      () => {
+        const createError = chrome.runtime.lastError;
+        if (createError)
+          console.error('[Recito] Could not create settings menu:', createError.message);
+      },
+    );
   });
 }
 
@@ -165,12 +180,18 @@ chrome.contextMenus.onClicked.addListener((info) => {
 });
 
 // Set icon to match accent color on startup and when settings change
-getSettings().then((s) => updateIcon(s.themeColor)).catch(() => {});
+async function applyActionSettings() {
+  const settings = await getSettings();
+  await chrome.action.setPopup({
+    popup: settings.iconClick === 'popup' ? 'src/popup/index.html' : '',
+  });
+  await updateIcon();
+}
+applyActionSettings().catch(() => {});
 
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area === 'local' && changes['ir-settings']) {
-    const themeColor = changes['ir-settings'].newValue?.themeColor ?? null;
-    updateIcon(themeColor);
+    applyActionSettings().catch(() => {});
   }
 });
 

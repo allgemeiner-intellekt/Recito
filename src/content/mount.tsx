@@ -1,7 +1,7 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { FloatingToolbar } from './player/FloatingToolbar';
-import toolbarStyles from './player/toolbar.css?inline';
+import toolbarStyles from '@shared/design.css?inline';
 import themeStyles from '@shared/theme-vars.css?inline';
 import { getSettings } from '@shared/storage';
 import { resolveTheme } from '@shared/theme';

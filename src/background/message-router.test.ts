@@ -45,6 +45,10 @@ const {
 
 vi.mock('./orchestrator', () => ({
   startPlayback: mockStartPlayback,
+  failPlayback: vi.fn(),
+  retryPlayback: vi.fn().mockResolvedValue(undefined),
+  changeVoice: vi.fn().mockResolvedValue(undefined),
+  ensureContentScript: vi.fn().mockResolvedValue(undefined),
   stopPlayback: mockStopPlayback,
   pausePlayback: mockPausePlayback,
   resumePlayback: mockResumePlayback,
@@ -62,6 +66,7 @@ vi.mock('./playback-state', () => ({
 }));
 
 vi.mock('./failover', () => ({
+  markFailed: vi.fn(),
   getAllHealth: mockGetAllHealth,
   clearHealth: mockClearHealth,
 }));
@@ -112,7 +117,7 @@ describe('routeMessage', () => {
         routeMessage({ type: MSG.PLAY }, mockSender, resolve);
       });
 
-      expect(mockStartPlayback).toHaveBeenCalledWith(42, undefined);
+      expect(mockStartPlayback).toHaveBeenCalledWith(42, undefined, undefined, undefined);
       expect(response).toEqual({ ok: true });
     });
 
@@ -124,11 +129,11 @@ describe('routeMessage', () => {
         routeMessage({ type: MSG.PLAY, fromSelection: true }, mockSender, resolve);
       });
 
-      expect(mockStartPlayback).toHaveBeenCalledWith(42, true);
+      expect(mockStartPlayback).toHaveBeenCalledWith(42, true, undefined, undefined);
       expect(response).toEqual({ ok: true });
     });
 
-    it('returns error message when startPlayback throws', async () => {
+    it('acknowledges start while errors are reported through playback state', async () => {
       mockTabsQuery.mockResolvedValue([{ id: 42 }]);
       mockStartPlayback.mockRejectedValue(new Error('No provider'));
 
@@ -136,10 +141,10 @@ describe('routeMessage', () => {
         routeMessage({ type: MSG.PLAY }, mockSender, resolve);
       });
 
-      expect(response).toEqual({ error: 'No provider' });
+      expect(response).toEqual({ ok: true });
     });
 
-    it('returns stringified error when startPlayback throws non-Error', async () => {
+    it('acknowledges start for asynchronous non-Error failure', async () => {
       mockTabsQuery.mockResolvedValue([{ id: 42 }]);
       mockStartPlayback.mockRejectedValue('string-error');
 
@@ -147,7 +152,7 @@ describe('routeMessage', () => {
         routeMessage({ type: MSG.PLAY }, mockSender, resolve);
       });
 
-      expect(response).toEqual({ error: 'string-error' });
+      expect(response).toEqual({ ok: true });
     });
   });
 
@@ -333,4 +338,22 @@ describe('routeMessage', () => {
       expect(response).toEqual({ ok: true });
     });
   });
+});
+
+it('returns the provider failure reason from a real synthesis test', async () => {
+  const { getProvider } = await import('@providers/registry');
+  vi.mocked(getProvider).mockReturnValue({
+    listVoices: vi.fn().mockResolvedValue([{ id: 'alloy', name: 'Alloy' }]),
+    synthesize: vi.fn().mockRejectedValue(new Error('Account quota exhausted')),
+  } as never);
+  const respond = vi.fn();
+  await routeMessage(
+    {
+      type: MSG.TEST_KEY,
+      config: { id: 'key', providerId: 'openai', name: 'My key', apiKey: 'fixture' },
+    },
+    {},
+    respond,
+  );
+  expect(respond).toHaveBeenCalledWith({ ok: false, error: 'Account quota exhausted' });
 });

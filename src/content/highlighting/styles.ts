@@ -38,9 +38,16 @@ export function removeHighlightStyles(styleEl: HTMLStyleElement): void {
 function buildCSS(settings: ResolvedHighlightSettings): string {
   const underline = settings.style === 'underline';
   const rgb = getComputedStyle(document.body).color.match(/\d+/g)?.map(Number);
-  const darkPage = rgb && (rgb[0] * 0.2126 + rgb[1] * 0.7152 + rgb[2] * 0.0722) > 160;
-  const wordBackground = underline ? 'transparent' : darkPage
-    ? settings.wordColor.replace(/0\.7\)$/, '1)') : settings.wordColor;
+  const darkPage = rgb && rgb[0] * 0.2126 + rgb[1] * 0.7152 + rgb[2] * 0.0722 > 160;
+  const wordBackground = underline
+    ? 'transparent'
+    : darkPage
+      ? settings.wordColor.replace(/0\.7\)$/, '1)')
+      : settings.wordColor;
+  const sentenceBackground =
+    settings.style === 'sentence'
+      ? settings.sentenceColor.replace(/0\.2\)$/, '0.34)')
+      : settings.sentenceColor;
   const wordText = darkPage && !underline ? '#1e1b17' : 'inherit';
 
   return `
@@ -52,7 +59,7 @@ function buildCSS(settings: ResolvedHighlightSettings): string {
   text-decoration-thickness: 3px;
 }
 ::highlight(ir-sentence) {
-  background-color: ${settings.sentenceColor};
+  background-color: ${sentenceBackground};
 }
 
 /* Scrub hover (interactive text navigation) */
@@ -75,7 +82,7 @@ mark.ir-word-mark {
   transition: background-color 0.15s ease;
 }
 mark.ir-sentence-mark {
-  background-color: ${settings.sentenceColor};
+  background-color: ${sentenceBackground};
   color: inherit;
   padding: 0;
   margin: 0;

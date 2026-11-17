@@ -11,6 +11,7 @@ import { scrollToHighlight } from './auto-scroll';
  * falling back to wrapping text in <mark> elements.
  */
 export class HighlightManager {
+  private lastRange: Range | null = null;
   private textMap: TextMapResult | null = null;
   private styleEl: HTMLStyleElement | null = null;
   private wordHighlight: Highlight | null = null;
@@ -83,6 +84,7 @@ export class HighlightManager {
     const range = createRangeFromOffsets(this.textMap.entries, charStart, charEnd);
     if (!range) return;
 
+    this.lastRange = range;
     if (this.useNativeHighlight && this.sentenceHighlight) {
       this.sentenceHighlight.add(range);
     } else {
@@ -147,6 +149,35 @@ export class HighlightManager {
     return this.textMap.text;
   }
 
+  isReadingVisible(): boolean {
+    const rect = this.lastRange?.getBoundingClientRect();
+    return !rect || (rect.top >= 0 && rect.bottom <= window.innerHeight);
+  }
+
+  returnToReading(): void {
+    const range = this.lastRange;
+    if (!range) return;
+    const rect = range.getBoundingClientRect();
+    for (
+      let parent = range.startContainer.parentElement;
+      parent && parent !== document.body;
+      parent = parent.parentElement
+    ) {
+      if (
+        parent.scrollHeight > parent.clientHeight &&
+        /auto|scroll/.test(getComputedStyle(parent).overflowY)
+      ) {
+        const box = parent.getBoundingClientRect();
+        parent.scrollBy({
+          top: rect.top + rect.height / 2 - box.top - parent.clientHeight / 2,
+          behavior: 'auto',
+        });
+        return;
+      }
+    }
+    window.scrollBy({ top: rect.top + rect.height / 2 - window.innerHeight / 2, behavior: 'auto' });
+  }
+
   clearAll(): void {
     this.clearWordHighlight();
     this.clearSentenceHighlight();
@@ -154,6 +185,7 @@ export class HighlightManager {
   }
 
   updateColors(settings: ResolvedHighlightSettings): void {
+    this.clearAll();
     this.settings = settings;
     if (this.styleEl) {
       updateHighlightStyles(this.styleEl, settings);
@@ -206,10 +238,7 @@ export class HighlightManager {
 
     // Collect text nodes within the range
     const textNodes: Text[] = [];
-    const walker = document.createTreeWalker(
-      range.commonAncestorContainer,
-      NodeFilter.SHOW_TEXT,
-    );
+    const walker = document.createTreeWalker(range.commonAncestorContainer, NodeFilter.SHOW_TEXT);
 
     let node: Text | null;
     while ((node = walker.nextNode() as Text | null)) {
