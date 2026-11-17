@@ -3,7 +3,13 @@ import React, { useEffect, useRef, useState } from 'react';
 import { MSG, sendMessage } from '@shared/messages';
 import type { PageInfo, PlaybackState } from '@shared/types';
 import { useTheme } from '@shared/useTheme';
-import { usePreferences, useVoices, useHealth, readyKeyCount } from '../ui/usePreferences';
+import {
+  usePreferences,
+  useVoices,
+  useHealth,
+  readyKeyCount,
+  sessionProvider,
+} from '../ui/usePreferences';
 import { Icon } from '../ui/Icon';
 import { ErrorCard, SpeedControl } from '../ui/controls';
 import { formatTime, minutesLeft, readingTimes, progressFraction } from '@shared/playback-copy';
@@ -22,12 +28,21 @@ const initial: PlaybackState = {
 export function Popup() {
   useTheme();
   const prefs = usePreferences();
-  const { settings, active, providers, update } = prefs;
-  const { voices } = useVoices(active);
+  const { settings, active: defaultProvider, providers, update } = prefs;
   const { health } = useHealth();
   const [state, setState] = useState(initial);
   const [info, setInfo] = useState<(PageInfo & { readable?: boolean }) | null>(null);
   const [tabId, setTabId] = useState<number>();
+  const controlsSession = state.status !== 'idle' && state.tabId === tabId;
+  const active = controlsSession
+    ? sessionProvider(state, providers, defaultProvider)
+    : defaultProvider;
+  const providerId = controlsSession
+    ? (state.providerId ?? active?.providerId ?? null)
+    : (active?.providerId ?? null);
+  const group =
+    controlsSession && state.providerGroup ? state.providerGroup : settings.activeProviderGroup;
+  const { voices } = useVoices(active);
   const [elsewhereTitle, setElsewhereTitle] = useState('');
   const [loaded, setLoaded] = useState(false);
   const main = useRef<HTMLDivElement>(null);
@@ -131,7 +146,7 @@ export function Popup() {
           </button>
         ) : !elsewhere && state.status === 'error' && state.error ? (
           <ErrorCard error={state.error} providerName={state.providerName} />
-        ) : !active ? (
+        ) : !active && !playingHere ? (
           <div className="pp-empty">
             <h3>A voice for your reading</h3>
             <p>Connect your own provider to start listening.</p>
@@ -243,14 +258,20 @@ export function Popup() {
           {state.notice}
         </div>
       )}
-      {readable && active && (
+      {readable && (active || playingHere) && (
         <div className="pp-rows">
           <div className="pp-row">
             <label htmlFor="popup-voice">Voice</label>
             <select
               className="sel"
               id="popup-voice"
-              value={state.voiceId ?? settings.activeVoiceId ?? voices[0]?.id ?? ''}
+              disabled={!active}
+              value={
+                (playingHere ? state.voiceId : undefined) ??
+                settings.activeVoiceId ??
+                voices[0]?.id ??
+                ''
+              }
               onChange={(e) =>
                 playingHere
                   ? sendMessage({ type: MSG.SET_VOICE, voiceId: e.target.value })
@@ -268,7 +289,7 @@ export function Popup() {
             <span>Speed</span>
             <SpeedControl
               speed={speed}
-              providerId={active.providerId}
+              providerId={providerId}
               onChange={(n) =>
                 playingHere
                   ? void sendMessage({ type: MSG.SET_SPEED, speed: n })
@@ -276,15 +297,15 @@ export function Popup() {
               }
             />
           </div>
-          {active.providerId === 'mimo' && (
+          {providerId === 'mimo' && (
             <div className="rp-hint">Xiaomi MiMo does not support speed control.</div>
           )}
         </div>
       )}
       <footer className="pp-foot">
         <span>
-          {active
-            ? `${state.providerName ?? PROVIDER_LIST.find((p) => p.id === active.providerId)?.name ?? active.providerId} · ${readyKeyCount(providers, settings.activeProviderGroup, health)} keys ready`
+          {active || playingHere
+            ? `${(controlsSession ? state.providerName : undefined) ?? PROVIDER_LIST.find((p) => p.id === active?.providerId)?.name ?? providerId} · ${readyKeyCount(providers, group, health)} keys ready`
             : 'Your keys stay in this browser'}
         </span>
         <span>Alt Shift Space</span>

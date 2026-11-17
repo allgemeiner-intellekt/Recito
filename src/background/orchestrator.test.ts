@@ -21,6 +21,11 @@ vi.mock('@providers/registry', () => ({
 vi.mock('@shared/storage', () => ({
   saveSettings: vi.fn().mockResolvedValue(undefined),
   getActiveProvider: vi.fn(),
+  getProviders: vi.fn().mockResolvedValue([]),
+  getProviderGroupKey: (config: { providerId: string; baseUrl?: string }) =>
+    config.providerId === 'custom'
+      ? 'custom:' + (config.baseUrl ?? '').replace(/\/+$/, '')
+      : config.providerId,
   getSettings: vi.fn(),
   saveProgress: vi.fn().mockResolvedValue(undefined),
   getProgress: vi.fn().mockResolvedValue(null),
@@ -579,6 +584,7 @@ it('retries the failed chunk in the existing selection and clears the error afte
     apiKey: 'fixture',
   });
   mockGetSettings.mockResolvedValue({
+    activeProviderGroup: 'openai',
     activeVoiceId: 'alloy',
     playback: { defaultSpeed: 1, defaultVolume: 1 },
   });
@@ -610,8 +616,26 @@ it('retries the failed chunk in the existing selection and clears the error afte
         listener({ type: MSG.CHUNK_COMPLETE, chunkIndex: message.chunkIndex });
   });
   synthesize.mockResolvedValue({ audioData: new ArrayBuffer(1), format: 'mp3' });
+  const { getProviders } = await import('@shared/storage');
+  vi.mocked(getProviders).mockResolvedValue([
+    {
+      id: 'retry-position',
+      providerId: 'openai',
+      name: 'Personal',
+      apiKey: 'repaired-fixture-key',
+      baseUrl: 'https://repaired.example/v1',
+      extraParams: { model: 'repaired-model' },
+    },
+  ]);
+  synthesize.mockClear();
   mockSendTabMessage.mockClear();
   await retryPlayback();
+  expect(synthesize.mock.calls[0][2]).toMatchObject({
+    apiKey: 'repaired-fixture-key',
+    baseUrl: 'https://repaired.example/v1',
+    extraParams: { model: 'repaired-model' },
+  });
+  expect(mockSendTabMessage).toHaveBeenCalledWith(1, { type: MSG.GET_CHUNK, index: 2 });
   const played = mockRuntimeSendMessage.mock.calls
     .filter(([m]) => m.type === MSG.OFFSCREEN_PLAY)
     .map(([m]) => m.chunkIndex);
@@ -621,5 +645,98 @@ it('retries the failed chunk in the existing selection and clears the error afte
     expect.objectContaining({ type: MSG.EXTRACT_CONTENT }),
   );
   expect(playbackState.getState().error).toBeUndefined();
+  mockRuntimeSendMessage.mockResolvedValue(undefined);
+});
+
+it('clamps a stale explicit resume index before requesting or playing any chunk', async () => {
+  vi.clearAllMocks();
+  stopPlayback();
+  mockGetActiveProvider.mockResolvedValue({
+    id: 'stale-position',
+    providerId: 'openai',
+    name: 'Personal',
+    apiKey: 'fixture',
+  });
+  mockGetSettings.mockResolvedValue({
+    activeProviderGroup: 'openai',
+    activeVoiceId: 'alloy',
+    playback: { defaultSpeed: 1, defaultVolume: 1 },
+  });
+  const synthesize = vi
+    .fn()
+    .mockRejectedValue(new Error('Fixture failure after valid chunk request'));
+  mockGetProvider.mockReturnValue({
+    name: 'OpenAI',
+    listVoices: vi.fn().mockResolvedValue([{ id: 'alloy', name: 'Alloy' }]),
+    synthesize,
+  });
+  mockSendTabMessage.mockImplementation(async (_tab, message) => {
+    if (message.type === MSG.EXTRACT_CONTENT)
+      return { totalChunks: 10, scope: { kind: 'page', wordCount: 300 } };
+    if (message.type === MSG.GET_PAGE_URL) return 'https://example.com/shorter-page';
+    if (message.type === MSG.GET_CHUNK)
+      return { text: 'Last remaining passage', wordCount: 3, index: message.index };
+  });
+  await startPlayback(1, false, 15);
+  expect(mockSendTabMessage).toHaveBeenCalledWith(1, { type: MSG.GET_CHUNK, index: 9 });
+  expect(synthesize).toHaveBeenCalled();
+  expect(playbackState.getState()).toMatchObject({
+    status: 'error',
+    currentChunkIndex: 9,
+    error: { chunkIndex: 9 },
+  });
+});
+
+it('does not overwrite a different default provider voice when changing the session voice', async () => {
+  vi.clearAllMocks();
+  stopPlayback();
+  mockGetActiveProvider.mockResolvedValue({
+    id: 'voice-switch',
+    providerId: 'openai',
+    name: 'Personal',
+    apiKey: 'fixture',
+  });
+  mockGetSettings.mockResolvedValue({
+    activeProviderGroup: 'openai',
+    activeVoiceId: 'alloy',
+    playback: { defaultSpeed: 1, defaultVolume: 1 },
+  });
+  const synthesize = vi.fn().mockRejectedValue(new Error('Fixture failure'));
+  mockGetProvider.mockReturnValue({
+    name: 'OpenAI',
+    listVoices: vi.fn().mockResolvedValue([
+      { id: 'alloy', name: 'Alloy' },
+      { id: 'echo', name: 'Echo' },
+    ]),
+    synthesize,
+  });
+  mockSendTabMessage.mockImplementation(async (_tab, message) => {
+    if (message.type === MSG.EXTRACT_CONTENT)
+      return { totalChunks: 1, scope: { kind: 'page', wordCount: 4 } };
+    if (message.type === MSG.GET_PAGE_URL) return 'https://example.com/session-voice';
+    if (message.type === MSG.GET_CHUNK)
+      return { text: 'Keep the session voice.', wordCount: 4, index: 0 };
+  });
+  await startPlayback(1, false, 0);
+  mockGetSettings.mockResolvedValue({ activeProviderGroup: 'mimo', activeVoiceId: 'Mia' });
+  synthesize.mockResolvedValue({ audioData: new ArrayBuffer(1), format: 'mp3' });
+  const listeners = new Set<(message: unknown) => void>();
+  mockRuntimeOnMessage.addListener.mockImplementation((listener) => listeners.add(listener));
+  mockRuntimeOnMessage.removeListener.mockImplementation((listener) => listeners.delete(listener));
+  mockRuntimeSendMessage.mockImplementation(async (message) => {
+    if (message.type === MSG.OFFSCREEN_PLAY)
+      for (const listener of listeners)
+        listener({ type: MSG.CHUNK_COMPLETE, chunkIndex: message.chunkIndex });
+  });
+  const { changeVoice } = await import('./orchestrator');
+  const { saveSettings } = await import('@shared/storage');
+  await changeVoice('echo');
+  expect(saveSettings).not.toHaveBeenCalled();
+  expect(synthesize).toHaveBeenLastCalledWith(
+    expect.any(String),
+    { id: 'echo', name: 'Echo' },
+    expect.objectContaining({ providerId: 'openai' }),
+    expect.any(Object),
+  );
   mockRuntimeSendMessage.mockResolvedValue(undefined);
 });

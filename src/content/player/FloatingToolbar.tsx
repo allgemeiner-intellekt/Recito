@@ -3,7 +3,13 @@ import { PROVIDER_LIST } from '@providers/registry';
 import React, { useEffect, useRef, useState } from 'react';
 import { useToolbarStore } from '../state/store';
 import { useShallow } from 'zustand/shallow';
-import { usePreferences, useVoices, useHealth, readyKeyCount } from '../../ui/usePreferences';
+import {
+  usePreferences,
+  useVoices,
+  useHealth,
+  readyKeyCount,
+  sessionProvider,
+} from '../../ui/usePreferences';
 import { Icon } from '../../ui/Icon';
 import { ErrorCard, SpeedControl, SpeedPresets } from '../../ui/controls';
 import { getProviderSpeedRange, SPEED_PRESETS, formatSpeed } from '@shared/constants';
@@ -21,7 +27,17 @@ export function FloatingToolbar() {
     })),
   );
   const actions = useToolbarStore.getState();
-  const { settings, providers, active, update } = usePreferences();
+  const { settings, providers, active: defaultProvider, update } = usePreferences();
+  const state = store.state;
+  const active = sessionProvider(state, providers, defaultProvider);
+  const group =
+    state.status !== 'idle' && state.providerGroup
+      ? state.providerGroup
+      : settings.activeProviderGroup;
+  const providerId =
+    state.status !== 'idle'
+      ? (state.providerId ?? active?.providerId ?? null)
+      : (active?.providerId ?? null);
   const { voices } = useVoices(active);
   const { health } = useHealth();
   const [hover, setHover] = useState(false);
@@ -36,7 +52,6 @@ export function FloatingToolbar() {
   const [slow, setSlow] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const { style, onPointerDown } = useDrag(settings, update);
-  const state = store.state;
   const notice = store.toast ?? state.notice;
   useEffect(() => {
     if (
@@ -63,7 +78,7 @@ export function FloatingToolbar() {
   }, [state.status]);
   if (!store.visible) return null;
   const times = readingTimes(state);
-  const range = getProviderSpeedRange(state.providerId ?? active?.providerId ?? null);
+  const range = getProviderSpeedRange(providerId);
   const primary = () =>
     state.status === 'error'
       ? sendMessage({ type: MSG.RETRY })
@@ -219,19 +234,16 @@ export function FloatingToolbar() {
               <span>Speed</span>
               <SpeedControl
                 speed={state.speed}
-                providerId={active?.providerId ?? null}
+                providerId={providerId}
                 onChange={actions.setSpeed}
               />
             </div>
-            <SpeedPresets
-              speed={state.speed}
-              providerId={active?.providerId ?? null}
-              onChange={actions.setSpeed}
-            />
+            <SpeedPresets speed={state.speed} providerId={providerId} onChange={actions.setSpeed} />
             <div className="rp-row">
               <label htmlFor="rail-voice">Voice</label>
               <select
                 id="rail-voice"
+                disabled={!active}
                 className="sel"
                 value={state.voiceId ?? settings.activeVoiceId ?? voices[0]?.id ?? ''}
                 onChange={(e) => sendMessage({ type: MSG.SET_VOICE, voiceId: e.target.value })}
@@ -268,7 +280,7 @@ export function FloatingToolbar() {
             <div className="rp-foot">
               <span>
                 {state.providerName ?? PROVIDER_LIST.find((p) => p.id === active?.providerId)?.name}{' '}
-                · {readyKeyCount(providers, settings.activeProviderGroup, health)} keys ready
+                · {readyKeyCount(providers, group, health)} keys ready
               </span>
               <button className="link" onClick={() => sendMessage({ type: MSG.OPEN_OPTIONS })}>
                 Settings

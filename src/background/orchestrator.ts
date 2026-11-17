@@ -1,8 +1,10 @@
 import { MSG, sendTabMessage, type ExtensionMessage } from '@shared/messages';
-import type { TextChunk, PlaybackError } from '@shared/types';
+import type { TextChunk, PlaybackError, ProviderConfig } from '@shared/types';
 import { getProvider } from '@providers/registry';
 import {
   getActiveProvider,
+  getProviders,
+  getProviderGroupKey,
   getSettings,
   saveSettings,
   saveProgress,
@@ -134,8 +136,12 @@ export async function ensureContentScript(tabId: number): Promise<void> {
  * Resolve the provider config and voice for a new session.
  * Locks these at session start so mid-read settings changes don't affect playback.
  */
-async function initSession(request: number): Promise<PlaybackSession> {
-  const providerConfig = await getActiveProvider();
+async function initSession(
+  request: number,
+  configOverride?: ProviderConfig,
+  voiceOverride?: string,
+): Promise<PlaybackSession> {
+  const providerConfig = configOverride ?? (await getActiveProvider());
   if (!providerConfig) {
     throw new Error('No TTS provider configured. Please add one in Settings.');
   }
@@ -150,7 +156,7 @@ async function initSession(request: number): Promise<PlaybackSession> {
     setCachedVoices(providerConfig, voices);
   }
 
-  const voiceId = settings.activeVoiceId;
+  const voiceId = voiceOverride ?? settings.activeVoiceId;
   const selectedVoice = voices.find((v) => v.id === voiceId);
   if (providerConfig.providerId === 'mimo' && voiceId && !selectedVoice) {
     throw new Error(
@@ -171,6 +177,13 @@ async function initSession(request: number): Promise<PlaybackSession> {
     generation: sessionGeneration,
   };
   currentSession = session;
+  playbackState.update({
+    providerId: session.providerId,
+    providerGroup: getProviderGroupKey(providerConfig),
+    configId: providerConfig.id,
+    providerName: provider.name,
+    voiceId: voice.id,
+  });
   return session;
 }
 
@@ -296,9 +309,16 @@ export async function startPlayback(
     }
   }
 
+  startIndex = Math.max(
+    0,
+    Math.min(
+      extractResult.totalChunks - 1,
+      Number.isFinite(startIndex) ? Math.floor(startIndex) : 0,
+    ),
+  );
   playbackState.update({
     totalChunks: extractResult.totalChunks,
-    currentChunkIndex: Math.min(startIndex, extractResult.totalChunks - 1),
+    currentChunkIndex: startIndex,
     chunkWordCounts: extractResult.chunkWordCounts,
     scope: extractResult.scope ?? { kind: 'page', wordCount: extractResult.wordCount ?? 0 },
     excerpt: extractResult.excerpt,
@@ -766,6 +786,8 @@ async function synthesizeChunkWithFailover(
       };
 
       playbackState.update({
+        configId: candidate.id,
+        providerGroup: getProviderGroupKey(candidate),
         notice: `${failedConfigName} is resting. Switched to ${candidate.name}.`,
       });
       // Notify content script of failover
@@ -867,19 +889,54 @@ export function failPlayback(
 export async function retryPlayback(): Promise<void> {
   const state = playbackState.getState();
   if (state.status !== 'error' || activeTabId === null) return;
-  if (currentSession && state.totalChunks)
+  if (currentSession && state.totalChunks) {
+    const previous = currentSession;
+    playbackState.update({ status: 'loading', error: undefined });
+    const request = startRequest;
+    const [providers, settings] = await Promise.all([getProviders(), getSettings()]);
+    if (request !== startRequest || currentSession !== previous) return;
+    const group = getProviderGroupKey(previous.config);
+    const sameGroup = settings.activeProviderGroup === group;
+    const repaired = sameGroup
+      ? providers.find(
+          (config) => config.id === previous.config.id && getProviderGroupKey(config) === group,
+        )
+      : undefined;
+    const config = repaired ?? (await getActiveProvider());
+    if (!config) {
+      failPlayback(new Error('No provider configured'), 'no-provider', state.error?.chunkIndex);
+      return;
+    }
+    await initSession(
+      request,
+      config,
+      sameGroup && config.providerId === previous.providerId ? previous.voice.id : undefined,
+    );
+    const range = PROVIDER_SPEED_RANGES[config.providerId];
+    setSpeed(range ? Math.max(range.min, Math.min(range.max, state.speed)) : 1);
+    prefetchCache.clear();
     await skipToChunk(state.error?.chunkIndex ?? state.currentChunkIndex);
-  else await startPlayback(activeTabId, state.scope?.kind === 'selection', state.error?.chunkIndex);
+  } else
+    await startPlayback(activeTabId, state.scope?.kind === 'selection', state.error?.chunkIndex);
 }
 export async function changeVoice(voiceId: string): Promise<void> {
   const settings = await getSettings();
-  await saveSettings({ ...settings, activeVoiceId: voiceId });
-  if (!currentSession || activeTabId === null) return;
+  if (!currentSession || activeTabId === null) {
+    await saveSettings({ ...settings, activeVoiceId: voiceId });
+    return;
+  }
   const session = currentSession;
   const provider = getProvider(session.providerId);
   const voice = (await provider.listVoices(session.config)).find((v) => v.id === voiceId);
   if (currentSession !== session) return;
-  if (!voice) throw new Error('Voice not found');
+  if (!voice) {
+    playbackState.update({
+      notice: 'That voice is no longer available. Your current voice is still playing.',
+    });
+    return;
+  }
+  if (settings.activeProviderGroup === getProviderGroupKey(session.config))
+    await saveSettings({ ...settings, activeVoiceId: voiceId });
   abortController?.abort();
   sessionGeneration++;
   currentSession = { ...currentSession, voice, generation: sessionGeneration };

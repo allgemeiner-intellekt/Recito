@@ -346,3 +346,59 @@ it('keeps retired configurations visible and removable without offering editing'
   await click('Confirm remove');
   expect(data['ir-providers']).toEqual([]);
 });
+
+it.each(['popup', 'player'] as const)(
+  'keeps %s controls on the session provider after default-provider changes',
+  async (surface) => {
+    data['ir-settings'] = {
+      ...DEFAULT_SETTINGS,
+      activeProviderGroup: 'mimo',
+      activeVoiceId: 'Mia',
+    };
+    data['ir-providers'] = [
+      { id: 'key', providerId: 'openai', name: 'Reading key', apiKey: 'fixture' },
+      { id: 'mimo-key', providerId: 'mimo', name: 'MiMo default', apiKey: 'fixture' },
+    ];
+    vi.mocked(chrome.runtime.sendMessage).mockImplementation(async (message) => {
+      const m = message as { type?: string; providerId?: string };
+      if (m.type === MSG.GET_PAGE_INFO)
+        return {
+          scope: { kind: 'page', wordCount: 200 },
+          wordCount: 200,
+          readable: true,
+          excerpt: 'Page opening.',
+        };
+      if (m.type === MSG.LIST_VOICES)
+        return m.providerId === 'key'
+          ? [{ id: 'alloy', name: 'Alloy' }]
+          : [{ id: 'Mia', name: 'Mia' }];
+      return {};
+    });
+    const session = {
+      ...initial,
+      status: 'playing' as const,
+      providerId: 'openai',
+      providerGroup: 'openai',
+      configId: 'key',
+      voiceId: 'alloy',
+    };
+    if (surface === 'popup') {
+      await render(React.createElement(Popup));
+      await state(session);
+    } else {
+      useToolbarStore.setState({ snapshot: session });
+      await render(React.createElement(FloatingToolbar));
+      await click('Player settings');
+    }
+    const select = container.querySelector('select')!;
+    expect([...select.options].map((option) => option.text)).toEqual(['Alloy']);
+    expect(select.value).toBe('alloy');
+    expect(button('Increase speed').disabled).toBe(false);
+    await click('Increase speed');
+    expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({ type: MSG.SET_SPEED, speed: 1.25 });
+    expect(data['ir-settings']).toMatchObject({
+      activeProviderGroup: 'mimo',
+      activeVoiceId: 'Mia',
+    });
+  },
+);

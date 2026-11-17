@@ -114,6 +114,7 @@ export async function handleMessage(message: ExtensionMessage): Promise<unknown>
 
       if (
         message.startOffset === undefined &&
+        !fromSelection &&
         !isWeread() &&
         canReuseExtraction(currentExtraction, extractionKey) &&
         currentChunks.length === currentExtraction?.totalChunks

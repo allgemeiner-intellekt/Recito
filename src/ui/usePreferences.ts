@@ -105,3 +105,26 @@ export function readyKeyCount(
           (health[p.id].cooldownUntil ?? Infinity) <= Date.now())),
   ).length;
 }
+
+/** Default-provider edits do not change an already bound playback session. */
+export function sessionProvider(
+  state: import('@shared/types').PlaybackState,
+  providers: ProviderConfig[],
+  fallback: ProviderConfig | null,
+): ProviderConfig | null {
+  if (state.status === 'idle' || !state.providerId) return fallback;
+  return (
+    providers.find(
+      (p) =>
+        p.id === state.configId &&
+        p.providerId === state.providerId &&
+        (!state.providerGroup || getProviderGroupKey(p) === state.providerGroup),
+    ) ??
+    providers.find((p) =>
+      state.providerGroup
+        ? getProviderGroupKey(p) === state.providerGroup
+        : p.providerId === state.providerId,
+    ) ??
+    null
+  );
+}

@@ -100,6 +100,8 @@ export interface PlaybackState {
   excerpt?: string;
   tabId?: number;
   providerId?: string;
+  providerGroup?: string;
+  configId?: string;
   providerName?: string;
   voiceId?: string;
   notice?: string;
