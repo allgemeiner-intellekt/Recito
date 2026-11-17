@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { getSettings } from './storage';
-import { applyAccentColor, applyTheme, resolveTheme, watchTheme } from './theme';
+import { applyTheme, watchTheme } from './theme';
 import type { ThemeMode } from './types';
 
 const SETTINGS_KEY = 'ir-settings';
@@ -12,7 +12,7 @@ export function useTheme(): void {
     async function init() {
       const settings = await getSettings();
       applyTheme(settings.theme, settings.themeColor);
-      cleanup = watchTheme(settings.theme, (resolved) => {
+      cleanup = watchTheme(settings.theme, () => {
         applyTheme(settings.theme, settings.themeColor);
       });
     }
@@ -26,7 +26,7 @@ export function useTheme(): void {
         applyTheme(newTheme, newColor);
         cleanup?.();
         cleanup = watchTheme(newTheme, () => {
-          applyAccentColor(newColor, resolveTheme(newTheme));
+          applyTheme(newTheme, newColor);
         });
       }
     };

@@ -46,7 +46,7 @@ export function deriveAccentVars(
 }
 
 /** Default accent hex when no themeColor is set. */
-const DEFAULT_ACCENT = '#3b82f6';
+const DEFAULT_ACCENT = '#93c8f4';
 
 /**
  * Derive highlight colors from a hex accent color.
@@ -58,8 +58,8 @@ export function highlightColorsFromAccent(hex: string | null): {
 } {
   const [r, g, b] = hexToRgb(hex ?? DEFAULT_ACCENT);
   return {
-    wordColor: `rgba(${r}, ${g}, ${b}, 0.35)`,
-    sentenceColor: `rgba(${r}, ${g}, ${b}, 0.08)`,
+    wordColor: `rgba(${r}, ${g}, ${b}, 0.7)`,
+    sentenceColor: `rgba(${r}, ${g}, ${b}, 0.2)`,
   };
 }
 

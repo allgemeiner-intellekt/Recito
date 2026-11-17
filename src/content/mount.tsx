@@ -2,7 +2,7 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { FloatingToolbar } from './player/FloatingToolbar';
 import toolbarStyles from './player/toolbar.css?inline';
-import { deriveAccentVars } from '@shared/accent-colors';
+import themeStyles from '@shared/theme-vars.css?inline';
 import { getSettings } from '@shared/storage';
 import { resolveTheme } from '@shared/theme';
 
@@ -31,7 +31,7 @@ export function mountToolbar() {
 
   // Inject styles into shadow DOM
   const styleEl = document.createElement('style');
-  styleEl.textContent = toolbarStyles;
+  styleEl.textContent = themeStyles + toolbarStyles;
   shadow.appendChild(styleEl);
 
   // Apply theme class to host
@@ -41,16 +41,8 @@ export function mountToolbar() {
     host.classList.toggle('light', resolved === 'light');
     host.classList.toggle('dark', resolved === 'dark');
 
-    if (settings.themeColor) {
-      const vars = deriveAccentVars(settings.themeColor, resolved);
-      host.style.setProperty('--ir-accent', vars.accent);
-      host.style.setProperty('--ir-accent-hover', vars.accentHover);
-      host.style.setProperty('--ir-accent-glow', vars.accentGlow);
-    } else {
-      host.style.removeProperty('--ir-accent');
-      host.style.removeProperty('--ir-accent-hover');
-      host.style.removeProperty('--ir-accent-glow');
-    }
+    host.dataset.theme = resolved;
+    host.dataset.ink = settings.ink;
   }
 
   applyToolbarTheme();

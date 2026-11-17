@@ -1,6 +1,6 @@
 import { isSupportedProvider } from './provider-support';
 import type { ProviderConfig, AppSettings } from './types';
-import { DEFAULT_SETTINGS } from './constants';
+import { normalizeSettings } from './settings-model';
 import { normalizeMimoConfig } from './mimo-config';
 
 const PROVIDERS_KEY = 'ir-providers';
@@ -108,7 +108,8 @@ export async function setActiveProviderGroup(groupKey: string, voiceId?: string)
 
 export async function getSettings(): Promise<AppSettings> {
   const result = await chrome.storage.local.get(SETTINGS_KEY);
-  const raw = { ...DEFAULT_SETTINGS, ...result[SETTINGS_KEY] };
+  const position = await chrome.storage.local.get('ir-toolbar-position');
+  const raw = normalizeSettings(result[SETTINGS_KEY] ?? {}, position['ir-toolbar-position']);
 
   // Migrate legacy activeProviderId → activeProviderGroup
   if (raw.activeProviderId && !raw.activeProviderGroup) {
@@ -129,12 +130,15 @@ export async function getSettings(): Promise<AppSettings> {
     await chrome.storage.local.set({ [SETTINGS_KEY]: raw });
   }
 
+  if (JSON.stringify(raw) !== JSON.stringify(result[SETTINGS_KEY])) {
+    await chrome.storage.local.set({ [SETTINGS_KEY]: raw });
+  }
   return raw;
 }
 
 export async function saveSettings(settings: AppSettings): Promise<void> {
   // Strip legacy field on save
-  const toSave = { ...settings };
+  const toSave = normalizeSettings(settings);
   delete toSave.activeProviderId;
   await chrome.storage.local.set({ [SETTINGS_KEY]: toSave });
 }

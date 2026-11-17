@@ -116,7 +116,7 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
   try {
     const newSettings = changes['ir-settings'].newValue;
     if (newSettings?.highlight && annotations) {
-      const resolved = resolveHighlightSettings(newSettings.highlight, newSettings.themeColor ?? null);
+      const resolved = { ...resolveHighlightSettings(newSettings.highlight, newSettings.themeColor ?? null), style: newSettings.highlightStyle };
       annotations.updateColors(resolved);
     }
   } catch (err) {
@@ -323,7 +323,7 @@ function destroyPlaybackAnnotations(): void {
 
 async function initializePlaybackAnnotations(source: Element | WereadChapter): Promise<void> {
   const settings = await getSettings();
-  const resolvedHighlight = resolveHighlightSettings(settings.highlight, settings.themeColor);
+  const resolvedHighlight = { ...resolveHighlightSettings(settings.highlight, settings.themeColor), style: settings.highlightStyle };
   destroyPlaybackAnnotations();
   annotations = new PlaybackAnnotations(source, currentChunks, resolvedHighlight, {
     isActive: () => {

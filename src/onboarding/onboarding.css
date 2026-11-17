@@ -209,7 +209,7 @@ body {
 .btn-primary {
   background: var(--accent);
   border-color: var(--accent);
-  color: #fff;
+  color: var(--on-mark);
 }
 
 .btn-primary:hover {
@@ -448,4 +448,10 @@ body {
 .done-actions {
   display: flex;
   gap: 12px;
+}
+
+h1, h2 { font-family: Georgia, "Times New Roman", serif; }
+
+@media (prefers-reduced-motion: reduce) {
+  .value-card { opacity: 1; }
 }
