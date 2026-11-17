@@ -4,7 +4,7 @@ Open-source Chrome extension (Manifest V3) for text-to-speech with BYOK (Bring Y
 
 ## Tech stack
 
-TypeScript 5 (strict), React 18, Vite 5 + @crxjs/vite-plugin, Zustand 5, Vitest
+TypeScript 5 (strict), React 18, Vite 5 + @crxjs/vite-plugin, Zustand 5, Vitest, Mozilla Readability
 
 ## Commands
 
@@ -22,7 +22,31 @@ TypeScript 5 (strict), React 18, Vite 5 + @crxjs/vite-plugin, Zustand 5, Vitest
 ## Key architecture
 
 - **Message passing**: All inter-context communication via typed messages (`src/lib/messages.ts`, `MSG` enum). Background ↔ content ↔ offscreen.
-- **TTS flow**: Content extracts text → chunker splits into sentence chunks with 30–50 word targets → background orchestrator sends chunks to TTS provider → audio played in offscreen document → playback progress drives word highlighting.
-- **Highlighting**: `buildTextNodeMap()` walks live DOM text nodes and records character offsets. `HighlightManager` creates Ranges from these offsets. Chunk offsets are recomputed against the DOM text map (not Readability text) to avoid misalignment.
-- **Word timing**: Providers with real word-level timing data use it directly. Otherwise, interpolation uses character-weighted word durations (longer words get proportionally more time).
+- **TTS flow**: Content extracts text → sentence-based chunker splits into chunks (30–50 word targets, preserving sentence boundaries) → background orchestrator sends chunks to TTS provider with 2-chunk prefetch buffer → audio played in offscreen document → playback progress drives word highlighting.
+- **Content extraction**: Smart heuristic scoring (tag type, class/ID patterns, paragraph density, link density) on top of Mozilla Readability. Gmail-specific extraction. Noise stripping (nav, footer, ads, comments, cookies).
+- **Highlighting**: `buildTextNodeMap()` walks live DOM text nodes and records character offsets. `HighlightManager` creates Ranges from these offsets using CSS Custom Highlight API (with `<mark>` fallback). Dual-layer: word highlight + sentence highlight. Chunk offsets are recomputed against the DOM text map (not Readability text) to avoid misalignment.
+- **Word timing**: Current adapters use character-weighted interpolation. Preserve the generic provider timing path for future adapters.
+- **Text scrubber**: Hover scrubbing maps screen coordinates to chunk indices via `caretPositionFromPoint`/`caretRangeFromPoint`. Click to seek.
+- **Auto-scroll**: Smooth scroll to viewport center. Pauses on manual scroll (wheel/touch), resumes after 5-second timeout.
+- **Speed control**: `SpeedSlider` component with provider-aware min/max clamping. Snap-to-preset behavior. Providers define their own speed ranges (e.g., OpenAI/Custom 0.5–2.0x, Mimo has no speed control).
+- **Provider health & failover**: Per-config health status (healthy/cooldown/failed). Smart cooldowns based on HTTP status. Auto-failover to next healthy config in same provider group (up to 3 attempts).
+- **Provider groups**: Multiple API keys per provider. Standard providers grouped by `providerId`, custom providers grouped by `custom:{baseUrl}`. Active provider stored per group.
+- **Reading progress**: URL-based position saved in `chrome.storage.local` with 7-day TTL. Auto-saves after each chunk; clears on completion.
 - **Storage**: Provider configs and settings in `chrome.storage.local` (never sync).
+- **State sync model**: Content script Zustand store receives state updates from the background via typed messages. Background `PlaybackStateManager` is the single source of truth. Session generation is incremented on every config switch/failover so that in-flight synthesis results from the stale session are discarded. Only one tab plays at a time; starting playback on a new tab aborts the previous session.
+
+## Providers
+
+| Provider | ID | Speed range | Word timing | Notes |
+|----------|----|-------------|-------------|-------|
+| OpenAI | `openai` | 0.5–1.5x | Interpolated | Realtime API (`gpt-realtime-2.1-mini`), 10 voices; non-OpenAI base URLs keep legacy `/audio/speech` |
+| Xiaomi Mimo | `mimo` | None | Interpolated | Built-in MiMo synthesis integration |
+| Custom | `custom` | 0.5–2.0x | Interpolated | Any OpenAI-compatible endpoint |
+
+## UI surfaces
+
+- **Floating toolbar** (`src/content/`) — draggable, collapsible, injected into page. Collapsed: play/pause with circular progress, skip, volume, speed chip. Expanded: progress bar, provider selector, speed slider.
+- **Options page** (`src/options/`) — Appearance, Providers, Voices, Playback, Highlighting, Hotkeys, Advanced.
+- **Popup** (`src/popup/`) — quick playback controls, page info.
+- **Onboarding** — 3-step wizard for first-time setup.
+- **Offscreen document** (`src/offscreen/`) — audio playback in separate execution context.

@@ -34,6 +34,8 @@ export interface TTSProvider {
     options?: SynthesisOptions,
   ): Promise<SynthesisResult>;
   validateKey(config: ProviderConfig): Promise<boolean>;
+  /** Map a saved voice ID that the provider no longer offers to its replacement. */
+  resolveVoiceId?(voiceId: string, config: ProviderConfig): string;
 }
 
 export interface SynthesisOptions {

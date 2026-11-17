@@ -52,7 +52,8 @@ export interface SpeedRange {
 }
 
 export const PROVIDER_SPEED_RANGES: Record<string, SpeedRange | null> = {
-  openai: { min: 0.5, max: 2.0 },
+  // Realtime API accepts 0.25–1.5 for session.audio.output.speed.
+  openai: { min: 0.5, max: 1.5 },
   mimo: null,
   custom: { min: 0.5, max: 2.0 },
 };

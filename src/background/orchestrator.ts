@@ -156,8 +156,16 @@ async function initSession(
     setCachedVoices(providerConfig, voices);
   }
 
-  const voiceId = voiceOverride ?? settings.activeVoiceId;
+  const savedVoiceId = voiceOverride ?? settings.activeVoiceId;
+  const voiceId =
+    savedVoiceId && provider.resolveVoiceId
+      ? provider.resolveVoiceId(savedVoiceId, providerConfig)
+      : savedVoiceId;
   const selectedVoice = voices.find((v) => v.id === voiceId);
+  // Persist a retired voice's replacement so settings surfaces show what actually plays.
+  if (selectedVoice && voiceId !== savedVoiceId && savedVoiceId === settings.activeVoiceId) {
+    await saveSettings({ ...settings, activeVoiceId: selectedVoice.id });
+  }
   if (providerConfig.providerId === 'mimo' && voiceId && !selectedVoice) {
     throw new Error(
       'Your saved MiMo voice is no longer listed. Choose a voice in Settings > Voices before playing.',
