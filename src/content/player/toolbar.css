@@ -505,13 +505,8 @@
 }
 
 .ir-panel-select option {
-  background: #1a1a2e;
-  color: var(--on-mark);
-}
-
-:host(.light) .ir-panel-select option {
-  background: #fff;
-  color: #1a1a2e;
+  background: var(--surface);
+  color: var(--ink);
 }
 
 /* Settings icon button (inline) */
