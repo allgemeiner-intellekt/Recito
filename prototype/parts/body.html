@@ -1,0 +1,196 @@
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-play" viewBox="0 0 20 20"><path class="f" d="M7 4.2v11.6a.6.6 0 0 0 .92.5l8.9-5.8a.6.6 0 0 0 0-1L7.92 3.7A.6.6 0 0 0 7 4.2z"/></symbol>
+  <symbol id="i-pause" viewBox="0 0 20 20"><rect class="f" x="5" y="4" width="3.6" height="12" rx="1"/><rect class="f" x="11.4" y="4" width="3.6" height="12" rx="1"/></symbol>
+  <symbol id="i-back" viewBox="0 0 20 20"><path class="f" d="M15.5 5.2v9.6a.5.5 0 0 1-.78.42L7.6 10.4a.5.5 0 0 1 0-.82l7.12-4.8a.5.5 0 0 1 .78.42z"/><path d="M5 5v10"/></symbol>
+  <symbol id="i-fwd" viewBox="0 0 20 20"><path class="f" d="M4.5 5.2v9.6a.5.5 0 0 0 .78.42l7.12-4.82a.5.5 0 0 0 0-.82L5.28 4.78a.5.5 0 0 0-.78.42z"/><path d="M15 5v10"/></symbol>
+  <symbol id="i-chev" viewBox="0 0 20 20"><path d="M12 5l-5 5 5 5"/></symbol>
+  <symbol id="i-close" viewBox="0 0 20 20"><path d="M5.5 5.5l9 9M14.5 5.5l-9 9"/></symbol>
+  <symbol id="i-sliders" viewBox="0 0 20 20"><path d="M3.5 6.5h5M13.5 6.5h3M3.5 13.5h3M11.5 13.5h5"/><circle cx="11" cy="6.5" r="2.2"/><circle cx="9" cy="13.5" r="2.2"/></symbol>
+  <symbol id="i-check" viewBox="0 0 20 20"><path d="M4.5 10.5l3.5 3.5 7.5-8"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 20 20"><path d="M10 3.5l7 12.5H3z"/><path d="M10 8.5v3.2M10 14v.1"/></symbol>
+  <symbol id="i-info" viewBox="0 0 20 20"><circle cx="10" cy="10" r="7"/><path d="M10 9.2v4.3M10 6.6v.1"/></symbol>
+  <symbol id="i-key" viewBox="0 0 20 20"><circle cx="7" cy="13" r="3.2"/><path d="M9.3 10.7L16 4M13.2 6.8l2.2 2.2"/></symbol>
+  <symbol id="i-wave" viewBox="0 0 20 20"><path d="M4 8v4M7 5.5v9M10 7.5v5M13 4.5v11M16 8v4"/></symbol>
+  <symbol id="i-lines" viewBox="0 0 20 20"><path d="M4 5.5h12M4 10h12M4 14.5h7"/></symbol>
+  <symbol id="i-circleplay" viewBox="0 0 20 20"><circle cx="10" cy="10" r="7"/><path class="f" d="M8.5 7.2v5.6l4.3-2.8z"/></symbol>
+  <symbol id="i-kbd" viewBox="0 0 20 20"><rect x="2.5" y="5" width="15" height="10" rx="2"/><path d="M6 8.7h.1M9 8.7h.1M12 8.7h.1M14.5 8.7h.1M7 11.8h6"/></symbol>
+  <symbol id="i-data" viewBox="0 0 20 20"><path d="M10 3.5v8.5M6.5 8.5L10 12l3.5-3.5M4 15.5h12"/></symbol>
+  <symbol id="i-ext" viewBox="0 0 20 20"><path d="M8.5 5H5v10h10v-3.5M11.5 4.5h4v4M15.5 4.5l-6.5 6.5"/></symbol>
+  <symbol id="i-vol" viewBox="0 0 20 20"><path d="M3.5 8v4h3l4 3.5v-11l-4 3.5z"/><path d="M13.5 7.5a3.6 3.6 0 0 1 0 5"/></symbol>
+  <symbol id="i-retry" viewBox="0 0 20 20"><path d="M15.5 10a5.5 5.5 0 1 1-1.7-4M15.5 3.8V7h-3.2"/></symbol>
+  <symbol id="i-eye" viewBox="0 0 20 20"><path d="M2.5 10s2.7-5 7.5-5 7.5 5 7.5 5-2.7 5-7.5 5-7.5-5-7.5-5z"/><circle cx="10" cy="10" r="2.2"/></symbol>
+  <symbol id="i-down" viewBox="0 0 20 20"><path d="M10 4v11M5.5 10.5L10 15l4.5-4.5"/></symbol>
+  <symbol id="i-logo" viewBox="0 0 20 20"><rect class="f" width="20" height="20" rx="5" style="fill:#1e1b17"/><rect x="3.5" y="11.2" width="13" height="4.6" rx="1" style="fill:#93c8f4;stroke:none"/><path d="M7 14.5v-9h3.4a2.6 2.6 0 0 1 0 5.2H7M10.4 10.7l2.9 3.8" style="stroke:#faf7f2;stroke-width:1.9"/></symbol>
+</svg>
+
+<div class="proto" role="region" aria-label="Prototype controls (not part of the product)">
+  <b>PROTOTYPE</b>
+  <div class="grp" id="g-view"><span>view</span>
+    <button data-view="read">Reading page</button><button data-view="popup">Popup states</button><button data-view="settings">Settings</button><button data-view="setup">First-run setup</button>
+  </div>
+  <div class="grp" id="g-layout"><span>player</span><button data-layout="rail">Rail (recommended)</button><button data-layout="dock">Dock</button></div>
+  <div class="grp"><span>scenario</span>
+    <select id="scenario" aria-label="Scenario">
+      <option value="normal">Normal playback</option>
+      <option value="slow">Slow first response</option>
+      <option value="ratelimit">Rate limit, backup key takes over</option>
+      <option value="badkey">Key rejected mid-read</option>
+      <option value="offline">Provider unreachable</option>
+      <option value="noprovider">No provider set up</option>
+    </select>
+  </div>
+  <div class="grp" id="g-theme"><span>recito</span><button data-theme-set="light">Light</button><button data-theme-set="dark">Dark</button></div>
+  <div class="grp"><span>demo</span><button id="demoSel">Select a passage</button></div>
+  <div class="grp" id="g-page"><span>page</span><button data-page-set="light">Light</button><button data-page-set="dark">Dark</button></div>
+</div>
+
+<div class="stage">
+  <!-- ================= Reading page ================= -->
+  <section class="view" id="v-read" aria-label="Reading page">
+    <div class="bw">
+      <div class="bw-tabs"><div class="bw-tab">The Voice in the Margin — Meridian Review</div><div class="bw-tab off">Inbox (3)</div></div>
+      <div class="bw-bar">
+        <div class="bw-url">meridianreview.example/essays/the-voice-in-the-margin</div>
+        <button class="bw-ext" id="extBtn" aria-label="Recito (extension icon)" aria-expanded="false" title="Recito"><svg width="20" height="20"><use href="#i-logo"/></svg><span class="badge"></span></button>
+      </div>
+      <div class="bw-view" id="bwView">
+        <div class="page" id="page">
+          <div class="site-nav"><strong>The Meridian Review</strong><span>Essays · Science · Books · Subscribe</span></div>
+          <article class="art" id="art">
+            <div class="kicker">Essay</div>
+            <h1>The Voice in the Margin</h1>
+            <p class="dek">For most of history, to read was to be heard. Listening to a page is an old habit we are picking up again.</p>
+            <div class="by">By Ines Okafor · 4 minute read</div>
+            <p>In the late fourth century, a young teacher of rhetoric visited the bishop of Milan and found him doing something odd. The bishop sat with a book open in front of him, and his eyes moved across the page, but his voice was silent and his tongue was still. The visitor thought it strange enough to write down, and he spent a paragraph guessing at the reason. Perhaps the bishop was saving his voice. Perhaps he wanted to avoid questions from the people who drifted in and out of the room.</p>
+            <p>We read that passage now and smile, because silent reading is the only kind most of us practise. But the visitor’s surprise tells us something about his world. A text, for him, was a script for the voice. <em>Reading</em> meant performing it, usually for other people, and a book that nobody spoke was a book at rest.</p>
+            <p>The pages themselves were built for speech. Early manuscripts ran their words together without spaces, so the surest way to find where one word ended was to sound the line out. Punctuation, when it arrived, marked where a reader should breathe. Libraries were noisy rooms, and a scholar who wanted quiet had to ask for it.</p>
+            <h2>What the eye gave up</h2>
+            <p>Silent reading spread slowly, helped along by spaces between words and by the private study. It brought real gains. A silent reader can skim, double back, and hold two passages against each other. She can read faster than anyone can speak, and she can read things she would never say out loud.</p>
+            <blockquote>A book that nobody spoke was a book at rest.</blockquote>
+            <p>Something was traded away, though. A voice sets a pace, and a pace is a kind of attention. When a sentence is spoken you cannot slide past it the way the eye slides past a familiar paragraph. Rhythm does part of the remembering for you, which is why people who cannot recall a page of prose can still recite a poem they learned at nine.</p>
+            <p>Teachers have long known this. Proofreaders read copy aloud because the ear catches the doubled word that the eye forgives. Writers do the same with their drafts, and for the same reason: a sentence that trips the tongue will usually trip the reader as well.</p>
+            <h2>Reading with both</h2>
+            <p>The interesting case is the one in between, where the eye and the ear work on the same text at once. Studies of <a href="#">reading while listening</a> tend to find modest gains in comprehension for long or difficult material, and larger ones for people reading in a second language. The voice carries the reader through the hard stretch, and the page stays there for the moment she wants to stop and look again.</p>
+            <p>That pairing used to need a second person. A parent read while a child followed the line with a finger. Now a synthetic voice can do it, and the finger is a band of colour that moves along the sentence. The technology is new, but the arrangement is very old, and it works for the old reasons.</p>
+            <p>None of this is an argument against silence. It is a reminder that the quiet page was an invention, and a recent one. When you let an essay be read to you while your eyes rest on the words, you are doing what the visitor in Milan would have recognised at once as reading.</p>
+          </article>
+        </div>
+        <div id="playerMount"></div>
+        <button class="btn sm rp-return" id="returnBtn" hidden></button>
+        <div class="pp pp-live" id="ppLive" hidden></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= Popup states ================= -->
+  <section class="view" id="v-popup" aria-label="Popup states" hidden><div class="gallery" id="gallery"></div></section>
+
+  <!-- ================= Settings ================= -->
+  <section class="view" id="v-settings" aria-label="Settings" hidden>
+    <div class="st">
+      <nav class="st-nav" aria-label="Settings sections">
+        <span class="wm">Recito</span>
+        <button data-sec="voice"><svg class="ic" width="18" height="18"><use href="#i-wave"/></svg>Voice &amp; keys</button>
+        <button data-sec="look"><svg class="ic" width="18" height="18"><use href="#i-lines"/></svg>Appearance</button>
+        <button data-sec="play"><svg class="ic" width="18" height="18"><use href="#i-circleplay"/></svg>Playback</button>
+        <button data-sec="keys"><svg class="ic" width="18" height="18"><use href="#i-kbd"/></svg>Shortcuts</button>
+        <button data-sec="data"><svg class="ic" width="18" height="18"><use href="#i-data"/></svg>Data</button>
+        <div class="saved" role="status"><svg class="ic" width="14" height="14"><use href="#i-check"/></svg><span id="savedMsg">Changes save as you make them</span></div>
+      </nav>
+      <main class="st-main">
+        <div data-pane="voice">
+          <h1>Voice &amp; keys</h1>
+          <p class="lede">Recito reads with your own provider account. Keys stay in this browser.</p>
+          <h2>Reading voice</h2>
+          <div class="card">
+            <div class="row"><div class="t"><b>Provider in use</b><small id="provNote"></small></div><div class="ctl"><div class="seg" id="provSeg" role="group" aria-label="Provider in use"></div></div></div>
+            <div class="sub"><div class="voices" id="voiceList" role="radiogroup" aria-label="Voice"></div></div>
+          </div>
+          <h2>Providers and keys</h2>
+          <div id="keysList"></div>
+          <div style="display:flex;align-items:center;gap:12px;margin-top:14px">
+            <button class="btn primary" id="addKey"><svg class="ic" width="16" height="16"><use href="#i-key"/></svg>Add a key</button>
+            <span style="color:var(--ink-2);font-size:13px">Add more than one key per provider and Recito switches to the next when one is rate-limited.</span>
+          </div>
+        </div>
+
+        <div data-pane="look" hidden>
+          <h1>Appearance</h1>
+          <p class="lede">How Recito looks, and how it marks the text it is reading.</p>
+          <h2>Highlight</h2>
+          <div class="card">
+            <div class="preview" aria-label="Highlight preview">Rhythm does part of the remembering for you. <span class="s">A voice sets a <span class="w">pace</span>, and a pace is a kind of attention.</span> When a sentence is spoken you cannot slide past it.</div>
+            <div class="row"><div class="t"><b>Style</b><small>What marks the word being spoken</small></div><div class="ctl"><div class="seg" id="hlSeg" role="group" aria-label="Highlight style"><button data-hl="marker">Marker</button><button data-hl="underline">Underline</button><button data-hl="sentence">Sentence only</button></div></div></div>
+            <div class="row"><div class="t"><b>Ink</b><small>Also the accent colour across Recito</small></div><div class="ctl"><div class="swatches" id="inkSw" role="radiogroup" aria-label="Ink colour">
+              <label style="--c:#93c8f4" title="Blue"><input type="radio" name="ink" value="blue" aria-label="Blue"></label>
+              <label style="--c:#f4b740" title="Amber"><input type="radio" name="ink" value="amber" aria-label="Amber"></label>
+              <label style="--c:#f3a0a6" title="Rose"><input type="radio" name="ink" value="rose" aria-label="Rose"></label>
+              <label style="--c:#8ed6b1" title="Mint"><input type="radio" name="ink" value="mint" aria-label="Mint"></label>
+            </div></div></div>
+          </div>
+          <h2>Theme</h2>
+          <div class="card">
+            <div class="row"><div class="t"><b>Recito's own surfaces</b><small>Player, popup and settings. Web pages are never restyled.</small></div><div class="ctl"><div class="seg" id="themeSeg" role="group" aria-label="Theme"><button data-th="system">System</button><button data-th="light">Light</button><button data-th="dark">Dark</button></div></div></div>
+          </div>
+        </div>
+
+        <div data-pane="play" hidden>
+          <h1>Playback</h1>
+          <p class="lede">Defaults for new reading sessions, and where the player sits.</p>
+          <h2>Listening</h2>
+          <div class="card">
+            <div class="row"><div class="t"><b>Speed</b><small id="spNote">Applies to OpenAI and custom endpoints</small></div><div class="ctl"><span class="stepper" data-speed></span></div></div>
+            <div class="row"><div class="t"><b>Volume</b></div><div class="ctl" style="width:180px"><input type="range" min="0" max="100" value="90" data-vol aria-label="Volume"></div></div>
+            <div class="row"><div class="t"><b>Follow along</b><small>Scroll to keep the spoken sentence in view. Pauses for 5 seconds when you scroll yourself.</small></div><div class="ctl"><input type="checkbox" class="sw" data-auto checked aria-label="Follow along"></div></div>
+            <div class="row"><div class="t"><b>Skip references</b><small>Stop before bibliography and footnote sections</small></div><div class="ctl"><input type="checkbox" class="sw" aria-label="Skip references"></div></div>
+          </div>
+          <h2>Player</h2>
+          <div class="card">
+            <div class="row"><div class="t"><b>Position</b><small>You can also drag the player on any page</small></div><div class="ctl"><div class="seg" id="posSeg" role="group" aria-label="Player position"><button data-pos="rail-right">Right margin</button><button data-pos="rail-left">Left margin</button><button data-pos="dock">Bottom</button></div></div></div>
+            <div class="row"><div class="t"><b>Tuck away while playing</b><small>Shrinks to the play button and time left until you point at it. Margin positions only.</small></div><div class="ctl"><input type="checkbox" class="sw" id="tuckSw" checked aria-label="Tuck away while playing"></div></div>
+            <div class="row"><div class="t"><b>Clicking the toolbar icon</b><small>The shortcut always starts reading directly</small></div><div class="ctl"><div class="seg" id="clickSeg" role="group" aria-label="Toolbar icon click"><button data-click="popup">Opens the popup</button><button data-click="read">Starts reading</button></div></div></div>
+          </div>
+        </div>
+
+        <div data-pane="keys" hidden>
+          <h1>Shortcuts</h1>
+          <p class="lede">These work on any page, even when the player is tucked away.</p>
+          <div class="card">
+            <div class="row"><div class="t"><b>Play or pause</b></div><div class="ctl"><kbd>Alt</kbd><kbd>Shift</kbd><kbd>Space</kbd></div></div>
+            <div class="row"><div class="t"><b>Next sentence</b></div><div class="ctl"><kbd>Alt</kbd><kbd>Shift</kbd><kbd>→</kbd></div></div>
+            <div class="row"><div class="t"><b>Previous sentence</b></div><div class="ctl"><kbd>Alt</kbd><kbd>Shift</kbd><kbd>←</kbd></div></div>
+            <div class="row"><div class="t"><b>Jump to a sentence</b><small>While reading, click any sentence on the page</small></div><div class="ctl"><kbd>Click</kbd></div></div>
+          </div>
+          <p style="margin-top:14px;color:var(--ink-2)">Chrome owns these bindings. <button class="link">Change them in Chrome’s shortcut settings</button></p>
+        </div>
+
+        <div data-pane="data" hidden>
+          <h1>Data</h1>
+          <p class="lede">Everything Recito stores lives in this browser profile.</p>
+          <div class="card">
+            <div class="row"><div class="t"><b>Export settings</b><small>A JSON file with your preferences and provider keys. Treat it like a password.</small></div><div class="ctl"><button class="btn">Export</button></div></div>
+            <div class="row"><div class="t"><b>Import settings</b><small>Replaces current preferences and keys</small></div><div class="ctl"><button class="btn">Import…</button></div></div>
+            <div class="row"><div class="t"><b>Run setup again</b></div><div class="ctl"><button class="btn" data-goto="setup">Open setup</button></div></div>
+          </div>
+          <h2>Reset</h2>
+          <div class="card">
+            <div class="row"><div class="t"><b>Reset preferences</b><small>Keys and saved reading positions are kept</small></div><div class="ctl" id="resetCtl"><button class="btn danger" id="resetBtn">Reset…</button></div></div>
+          </div>
+        </div>
+      </main>
+    </div>
+    <dialog class="sheet" id="keySheet" aria-labelledby="keySheetTitle">
+      <div class="sheet-head"><h3 id="keySheetTitle">Add a key</h3><button class="icon-btn" data-close aria-label="Close"><svg class="ic" width="18" height="18"><use href="#i-close"/></svg></button></div>
+      <div class="sheet-body" id="keySheetBody"></div>
+    </dialog>
+  </section>
+
+  <!-- ================= Setup ================= -->
+  <section class="view" id="v-setup" aria-label="First-run setup" hidden>
+    <div class="setup"><div class="setup-in">
+      <span class="wm" style="font-size:24px">Recito</span>
+      <ol class="steps" id="steps"><li>1 · Connect a provider</li><li>2 · Pick a voice</li><li>3 · Listen</li></ol>
+      <div id="setupBody"></div>
+    </div></div>
+  </section>
+</div>

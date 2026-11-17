@@ -1,0 +1,1223 @@
+<!doctype html>
+<html lang="en" data-theme="light" data-ink="blue">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Recito redesign prototype</title>
+<style>
+/* ============ Recito tokens (the part that ships) ============ */
+:root {
+  --paper: #faf7f2; --surface: #ffffff; --sunken: #f2ede4;
+  --ink: #1e1b17; --ink-2: #5c554b; --ink-3: #8c8478;
+  --line: #e6dfd3; --line-2: #d2c9ba;
+  --mark: #93c8f4; --mark-strong: #72b5ee; --on-mark: #1e1b17;
+  --mark-soft: color-mix(in srgb, var(--mark) 24%, var(--surface));
+  --danger: #b42318; --danger-soft: #fbeae7;
+  --ok: #2e6b45; --ok-soft: #e6f1ea;
+  --warn: #8a5a00; --warn-soft: #fbf1db;
+  --r-s: 6px; --r-m: 10px; --r-l: 14px;
+  --shadow-1: 0 1px 2px rgba(30, 27, 23, .08);
+  --shadow-2: 0 1px 2px rgba(30, 27, 23, .10), 0 8px 24px rgba(30, 27, 23, .14);
+  --ui: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Charter, Georgia, serif;
+}
+[data-theme="dark"] {
+  --paper: #161412; --surface: #211e1a; --sunken: #100f0d;
+  --ink: #eee8de; --ink-2: #aba397; --ink-3: #7b7469;
+  --line: #322e28; --line-2: #4a443b;
+  --danger: #f2796e; --danger-soft: #3a1e1b;
+  --ok: #7fc79a; --ok-soft: #1b2c22;
+  --warn: #f4b740; --warn-soft: #33290f;
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, .4);
+  --shadow-2: 0 1px 2px rgba(0, 0, 0, .5), 0 8px 24px rgba(0, 0, 0, .5);
+}
+[data-ink="rose"] { --mark: #f3a0a6; --mark-strong: #ea858d; }
+[data-ink="mint"] { --mark: #8ed6b1; --mark-strong: #6fc79b; }
+[data-ink="amber"] { --mark: #f4b740; --mark-strong: #e9a21f; }
+
+@property --p { syntax: '<number>'; inherits: false; initial-value: 0; }
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { font: 14px/1.45 var(--ui); color: var(--ink); -webkit-font-smoothing: antialiased; }
+button, input, select { font: inherit; color: inherit; }
+button { cursor: pointer; }
+[hidden] { display: none !important; }
+.ic { display: block; fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+.ic .f { fill: currentColor; stroke: none; }
+:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+.num { font-variant-numeric: tabular-nums; }
+
+/* ============ Prototype chrome (not part of the product) ============ */
+.proto { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; padding: 7px 12px; background: #0b1020; color: #c9d2ee; font: 12px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.proto b { color: #7ee0c2; letter-spacing: .08em; font-weight: 600; }
+.proto .grp { display: flex; align-items: center; gap: 4px; }
+.proto .grp > span { color: #7d88ad; margin-right: 2px; }
+.proto button, .proto select { background: #18203a; border: 1px solid #2b3761; color: #c9d2ee; border-radius: 4px; padding: 4px 8px; font: inherit; }
+.proto button[aria-pressed="true"] { background: #7ee0c2; border-color: #7ee0c2; color: #0b1020; }
+.proto :focus-visible { outline-color: #7ee0c2; }
+.proto-hint { font: 12px/1.4 ui-monospace, Menlo, monospace; color: #3d4a78; background: #e6eaf7; border: 1px dashed #9aa6d1; border-radius: 4px; padding: 6px 8px; margin: 10px 0 0; }
+[data-theme="dark"] .proto-hint { color: #b9c4ee; background: #18203a; border-color: #3a4775; }
+.stage { height: 780px; position: relative; background: #cfcbc4; overflow: hidden; }
+.view { position: absolute; inset: 0; overflow: auto; }
+
+/* ============ Mock browser + host page (stand-ins for Chrome and a real site) ============ */
+.bw { position: absolute; inset: 12px; display: flex; flex-direction: column; border-radius: 10px; overflow: hidden; box-shadow: 0 10px 40px rgba(0, 0, 0, .25); background: #fff; }
+.bw-tabs { flex: none; height: 34px; background: #dde1e7; display: flex; align-items: flex-end; padding: 0 10px; gap: 6px; }
+.bw-tab { background: #fff; border-radius: 8px 8px 0 0; padding: 7px 14px; font-size: 12px; color: #333; max-width: 260px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bw-tab.off { background: none; color: #5f6672; }
+.bw-bar { flex: none; height: 40px; background: #fff; border-bottom: 1px solid #e3e5e8; display: flex; align-items: center; gap: 10px; padding: 0 10px; position: relative; z-index: 40; }
+.bw-url { flex: 1; background: #eef0f3; border-radius: 16px; padding: 6px 14px; font-size: 12.5px; color: #4a4f57; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bw-ext { position: relative; width: 30px; height: 30px; border-radius: 6px; border: 0; background: none; display: grid; place-items: center; padding: 0; }
+.bw-ext:hover, .bw-ext[aria-expanded="true"] { background: #e6e8eb; }
+.bw-ext:focus-visible { outline-color: #1a1a1a; }
+.bw-ext .badge { position: absolute; right: 2px; bottom: 2px; width: 9px; height: 9px; border-radius: 50%; background: var(--mark); border: 2px solid #fff; display: none; }
+.bw-ext[data-live="true"] .badge { display: block; }
+.bw-view { flex: 1; min-height: 0; position: relative; overflow: hidden; container-type: inline-size; }
+.page { position: absolute; inset: 0; overflow-y: auto; background: #fff; color: #1b1b1b; scroll-behavior: smooth; }
+.page.dark { background: #101317; color: #d5d9de; }
+.site-nav { display: flex; justify-content: space-between; align-items: center; padding: 14px 28px; border-bottom: 1px solid rgba(128, 128, 128, .25); font: 13px/1 Helvetica, Arial, sans-serif; letter-spacing: .04em; }
+.site-nav strong { font: 700 17px/1 Georgia, serif; letter-spacing: 0; }
+.site-nav span { opacity: .65; }
+.art { max-width: 664px; margin: 0 auto; padding: 48px 24px 160px; font: 19px/1.68 Georgia, "Times New Roman", serif; }
+.art .kicker { font: 600 12px/1 Helvetica, Arial, sans-serif; letter-spacing: .12em; text-transform: uppercase; color: #a3402c; }
+.page.dark .art .kicker { color: #e58a76; }
+.art h1 { font-size: 42px; line-height: 1.12; margin: 14px 0 12px; letter-spacing: -.01em; }
+.art .dek { font-size: 21px; line-height: 1.45; opacity: .75; margin: 0 0 18px; font-style: italic; }
+.art .by { font: 13px/1.4 Helvetica, Arial, sans-serif; opacity: .65; padding-bottom: 22px; border-bottom: 1px solid rgba(128, 128, 128, .25); margin-bottom: 28px; }
+.art h2 { font-size: 25px; margin: 38px 0 10px; }
+.art p { margin: 0 0 22px; }
+.art a { color: inherit; text-decoration-color: rgba(128, 128, 128, .7); }
+.art blockquote { margin: 30px 0; padding-left: 20px; border-left: 3px solid currentColor; font-size: 24px; line-height: 1.4; font-style: italic; }
+@container (max-width: 900px) { .art { max-width: 500px; font-size: 17px; padding-top: 32px; } .art h1 { font-size: 32px; } .art .dek { font-size: 18px; } .site-nav span { display: none; } }
+.art.scrub p, .art.scrub blockquote { cursor: pointer; }
+
+/* Reading highlights — CSS Custom Highlight API, as in the extension */
+:root { --rc-word: color-mix(in srgb, var(--mark) 70%, transparent); --rc-sent: color-mix(in srgb, var(--mark) 20%, transparent); }
+::highlight(rc-sent) { background-color: var(--rc-sent); }
+::highlight(rc-word) { background-color: var(--rc-word); }
+::highlight(rc-hover) { background-color: rgba(128, 128, 128, .18); }
+html.page-dark::highlight(rc-word), html.page-dark ::highlight(rc-word) { background-color: var(--mark); color: #1e1b17; }
+html.hl-underline ::highlight(rc-word) { background-color: transparent; color: inherit; text-decoration: underline 3px var(--mark-strong); text-underline-offset: 3px; }
+html.hl-sentence ::highlight(rc-word) { background-color: transparent; color: inherit; }
+html.hl-sentence ::highlight(rc-sent) { background-color: color-mix(in srgb, var(--mark) 34%, transparent); }
+
+/* ============ Shared controls ============ */
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 36px; padding: 0 14px; border-radius: var(--r-m); border: 1px solid var(--line-2); background: var(--surface); color: var(--ink); font-size: 13px; font-weight: 600; white-space: nowrap; }
+.btn:hover { background: var(--sunken); }
+.btn:active { background: var(--line); }
+.btn.primary { background: var(--mark); border-color: transparent; color: var(--on-mark); }
+.btn.primary:hover { background: var(--mark-strong); }
+.btn.quiet { border-color: transparent; background: none; }
+.btn.quiet:hover { background: var(--sunken); }
+.btn.danger { color: var(--danger); }
+.btn.lg { height: 44px; font-size: 15px; border-radius: 12px; }
+.btn.sm { height: 28px; padding: 0 10px; font-size: 12px; border-radius: 8px; }
+.btn.block { width: 100%; }
+.btn:disabled { opacity: .5; cursor: default; }
+.link { background: none; border: 0; padding: 0; color: var(--ink); text-decoration: underline; text-decoration-color: var(--line-2); text-underline-offset: 3px; font-size: inherit; }
+.link:hover { text-decoration-color: var(--ink); }
+.icon-btn { width: 32px; height: 32px; border-radius: 8px; border: 0; background: none; color: var(--ink-2); display: grid; place-items: center; padding: 0; flex: none; }
+.icon-btn:hover { background: var(--sunken); color: var(--ink); }
+.wm { font: 600 19px/1 var(--serif); letter-spacing: -.01em; color: var(--ink); background: linear-gradient(transparent 58%, var(--mark) 58%, var(--mark) 92%, transparent 92%); padding: 0 3px; }
+.sw { appearance: none; width: 36px; height: 22px; border-radius: 11px; background: var(--line-2); position: relative; margin: 0; flex: none; cursor: pointer; transition: background .12s; }
+.sw::after { content: ""; position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: #fff; box-shadow: var(--shadow-1); transition: transform .12s; }
+.sw:checked { background: var(--ink); }
+[data-theme="dark"] .sw:checked::after { background: var(--paper); }
+.sw:checked::after { transform: translateX(14px); }
+input[type="range"] { accent-color: var(--ink); width: 100%; margin: 0; height: 20px; }
+.sel { appearance: none; height: 32px; border-radius: 8px; border: 1px solid var(--line-2); background: var(--surface) no-repeat right 8px center / 12px; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='%238c8478' stroke-width='1.6' stroke-linecap='round'%3E%3Cpath d='M3 4.5l3 3 3-3'/%3E%3C/svg%3E"); padding: 0 26px 0 10px; font-size: 13px; max-width: 100%; }
+.field { display: block; margin-top: 14px; }
+.field > span { display: block; font-size: 12px; font-weight: 600; margin-bottom: 5px; }
+.field small { display: block; color: var(--ink-2); font-size: 12px; margin-top: 5px; }
+.inp { width: 100%; height: 38px; border-radius: var(--r-m); border: 1px solid var(--line-2); background: var(--surface); padding: 0 12px; font-size: 14px; }
+.inp:focus-visible { outline-offset: 0; }
+.inp-wrap { position: relative; }
+.inp-wrap .icon-btn { position: absolute; right: 3px; top: 3px; }
+.inp-wrap .inp { padding-right: 40px; font-family: ui-monospace, Menlo, monospace; font-size: 13px; }
+.stepper { display: inline-flex; align-items: center; border: 1px solid var(--line-2); border-radius: 8px; background: var(--surface); height: 30px; }
+.stepper button { width: 28px; height: 28px; border: 0; background: none; font-size: 16px; line-height: 1; color: var(--ink-2); border-radius: 7px; padding: 0; }
+.stepper button:hover:not(:disabled) { background: var(--sunken); color: var(--ink); }
+.stepper button:disabled { opacity: .35; cursor: default; }
+.stepper output { min-width: 46px; text-align: center; font-weight: 600; font-size: 13px; font-variant-numeric: tabular-nums; }
+.seg { display: inline-flex; padding: 3px; gap: 2px; border-radius: var(--r-m); background: var(--sunken); border: 1px solid var(--line); }
+.seg button { border: 0; background: none; height: 28px; padding: 0 12px; border-radius: 7px; font-size: 13px; font-weight: 600; color: var(--ink-2); }
+.seg button[aria-pressed="true"] { background: var(--surface); color: var(--ink); box-shadow: var(--shadow-1); }
+.status { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600; padding: 2px 8px 2px 6px; border-radius: 20px; white-space: nowrap; }
+.status.ok { color: var(--ok); background: var(--ok-soft); }
+.status.wait { color: var(--warn); background: var(--warn-soft); }
+.status.bad { color: var(--danger); background: var(--danger-soft); }
+.bar { height: 4px; border-radius: 2px; background: var(--line); position: relative; overflow: hidden; }
+.bar::after { content: ""; position: absolute; inset: 0; background: var(--ink); transform-origin: left; transform: scaleX(var(--p, 0)); }
+.spin { width: 16px; height: 16px; border-radius: 50%; border: 2px solid color-mix(in srgb, currentColor 25%, transparent); border-top-color: currentColor; animation: spin .8s linear infinite; flex: none; }
+@keyframes spin { to { transform: rotate(1turn); } }
+.callout { display: flex; gap: 10px; padding: 10px 12px; border-radius: var(--r-m); font-size: 13px; line-height: 1.4; }
+.callout .ic { margin-top: 1px; }
+.callout b { display: block; }
+.callout p { margin: 2px 0 0; color: var(--ink-2); }
+.callout .acts { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+.callout.bad { background: var(--danger-soft); } .callout.bad > .ic { color: var(--danger); }
+.callout.wait { background: var(--warn-soft); } .callout.wait > .ic { color: var(--warn); }
+.callout.ok { background: var(--ok-soft); } .callout.ok > .ic { color: var(--ok); }
+
+/* ============ In-page player ============ */
+.rp { position: absolute; z-index: 30; font: 13px/1.3 var(--ui); color: var(--ink); }
+.rp-bar { display: flex; align-items: center; gap: 2px; padding: 4px; background: var(--surface); border: 1px solid var(--line-2); border-radius: 26px; box-shadow: var(--shadow-2); cursor: grab; touch-action: none; user-select: none; }
+.rp.dragging .rp-bar { cursor: grabbing; }
+.rp.dragging { transition: none !important; }
+.rp-play { position: relative; width: 40px; height: 40px; border-radius: 50%; border: 0; padding: 0; background: none; flex: none; display: grid; place-items: center; }
+.rp-play::before { content: ""; position: absolute; inset: 0; border-radius: 50%; background: conic-gradient(var(--ink) calc(var(--p) * 1turn), var(--line-2) 0); }
+.rp-play i { position: relative; width: 32px; height: 32px; border-radius: 50%; background: var(--mark); color: var(--on-mark); display: grid; place-items: center; box-shadow: 0 0 0 1.5px var(--surface); }
+.rp-play:hover i { background: var(--mark-strong); }
+.rp[data-status="loading"] .rp-play::before { background: conic-gradient(var(--ink) .22turn, var(--line-2) 0); animation: spin .9s linear infinite; }
+.rp[data-status="error"] .rp-play::before { background: var(--danger); }
+.rp-time { font-size: 11px; font-weight: 600; color: var(--ink-2); font-variant-numeric: tabular-nums; white-space: nowrap; text-align: center; }
+.rp-btn { width: 38px; height: 32px; border-radius: 10px; border: 0; padding: 0; background: none; color: var(--ink-2); display: grid; place-items: center; flex: none; }
+.rp-btn:hover { background: var(--sunken); color: var(--ink); }
+.rp-btn:active { background: var(--line); }
+.rp-btn:focus-visible, .rp-play:focus-visible { outline-offset: -2px; }
+.rp-speed { font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.rp-speed:disabled { opacity: .4; cursor: default; background: none; }
+.rp-extra { display: grid; grid-template-rows: 1fr; grid-template-columns: 1fr; transition: grid-template-rows .16s ease, grid-template-columns .16s ease; }
+.rp-extra > div { min-height: 0; min-width: 0; overflow: hidden; display: flex; align-items: center; gap: 2px; }
+.rp-sep { background: var(--line); flex: none; }
+/* rail (recommended) */
+.rp[data-layout="rail"] { right: 14px; top: 0; }
+.rp[data-layout="rail"][data-side="left"] { right: auto; left: 14px; }
+.rp[data-layout="rail"] .rp-bar { flex-direction: column; width: 48px; }
+.rp[data-layout="rail"] .rp-time { margin: 3px 0 4px; }
+.rp[data-layout="rail"] .rp-extra > div { flex-direction: column; }
+.rp[data-layout="rail"] .rp-sep { width: 22px; height: 1px; margin: 3px 0; }
+.rp[data-layout="rail"][data-tucked="true"] .rp-extra { grid-template-rows: 0fr; }
+.rp[data-layout="rail"] .rp-fly { top: 0; right: calc(100% + 8px); }
+.rp[data-layout="rail"][data-side="left"] .rp-fly { right: auto; left: calc(100% + 8px); }
+.rp[data-layout="rail"][data-side="left"] .rp-more .ic { transform: scaleX(-1); }
+/* dock (alternative) */
+.rp[data-layout="dock"] { bottom: 16px; left: 50%; transform: translateX(-50%); }
+.rp[data-layout="dock"][data-pos="left"] { left: 16px; transform: none; }
+.rp[data-layout="dock"][data-pos="right"] { left: auto; right: 16px; transform: none; }
+.rp[data-layout="dock"] .rp-bar { padding-right: 6px; }
+.rp[data-layout="dock"] .rp-time { margin: 0 6px 0 6px; min-width: 40px; text-align: left; font-size: 12px; }
+.rp[data-layout="dock"] .rp-sep { width: 1px; height: 20px; margin: 0 3px; }
+.rp[data-layout="dock"] .rp-play { order: 2; } .rp[data-layout="dock"] .rp-back { order: 1; } .rp[data-layout="dock"] .rp-time { order: 4; }
+.rp[data-layout="dock"] .rp-extra { order: 3; display: contents; }
+.rp[data-layout="dock"] .rp-extra > div { display: contents; }
+.rp[data-layout="dock"] .rp-fwd { order: 3; } .rp[data-layout="dock"] .rp-sep, .rp[data-layout="dock"] .rp-speed { order: 5; } .rp[data-layout="dock"] .rp-more { order: 6; } .rp[data-layout="dock"] .rp-close { order: 7; }
+.rp[data-layout="dock"] .rp-more .ic { transform: rotate(90deg); }
+.rp[data-layout="dock"] .rp-fly { bottom: calc(100% + 8px); left: 50%; transform: translateX(-50%); flex-direction: column-reverse; }
+.rp[data-layout="dock"][data-pos="left"] .rp-fly { left: 0; transform: none; }
+.rp[data-layout="dock"][data-pos="right"] .rp-fly { left: auto; right: 0; transform: none; }
+/* flyout: notices + panel */
+.rp-fly { position: absolute; width: 276px; display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
+.rp-fly > * { pointer-events: auto; }
+.rp-card { background: var(--surface); border: 1px solid var(--line-2); border-radius: var(--r-l); box-shadow: var(--shadow-2); animation: pop .14s ease-out; }
+@keyframes pop { from { opacity: 0; transform: translateY(4px); } }
+.rp-note { padding: 12px; display: flex; gap: 10px; }
+.rp-note > .ic { margin-top: 1px; color: var(--ink-2); }
+.rp-note.bad { border-color: color-mix(in srgb, var(--danger) 45%, var(--line-2)); }
+.rp-note.bad > .ic { color: var(--danger); }
+.rp-note b { display: block; font-size: 13px; }
+.rp-note p { margin: 2px 0 0; color: var(--ink-2); font-size: 12.5px; line-height: 1.4; }
+.rp-note .acts { display: flex; gap: 6px; margin-top: 9px; }
+.rp-note .x { margin: -6px -6px 0 auto; }
+.rp-panel { padding: 14px; }
+.rp-title { font: 600 15px/1.3 var(--serif); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rp-sub { color: var(--ink-2); font-size: 12px; margin-top: 2px; }
+.rp-seek { margin: 12px 0 2px; }
+.rp-times { display: flex; justify-content: space-between; font-size: 11.5px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.rp-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 40px; border-top: 1px solid var(--line); }
+.rp-row:first-of-type { margin-top: 10px; }
+.rp-row > label, .rp-row > span:first-child { font-size: 13px; color: var(--ink); flex: none; }
+.rp-row .sel { max-width: 180px; }
+.rp-row input[type="range"] { max-width: 150px; }
+.rp-presets { display: flex; gap: 4px; padding: 0 0 10px; }
+.rp-presets button { flex: 1; height: 26px; border-radius: 7px; border: 1px solid var(--line); background: none; font-size: 12px; font-weight: 600; color: var(--ink-2); padding: 0; font-variant-numeric: tabular-nums; }
+.rp-presets button:hover { background: var(--sunken); }
+.rp-presets button[aria-pressed="true"] { background: var(--mark-soft); border-color: var(--mark-strong); color: var(--ink); }
+.rp-hint { font-size: 12px; color: var(--ink-2); padding: 0 0 10px; }
+.rp-foot { display: flex; align-items: center; justify-content: space-between; border-top: 1px solid var(--line); padding-top: 10px; font-size: 12px; color: var(--ink-2); }
+.dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); display: inline-block; margin-right: 6px; }
+.dot.wait { background: var(--warn); } .dot.bad { background: var(--danger); }
+.rp-return { position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 25; box-shadow: var(--shadow-2); border-radius: 20px; }
+.rp[data-layout="dock"] ~ .rp-return { bottom: 80px; }
+
+/* ============ Popup ============ */
+.pp { width: 340px; background: var(--paper); color: var(--ink); font: 13px/1.4 var(--ui); }
+.pp-live { position: absolute; top: 4px; right: 8px; z-index: 50; border-radius: 10px; overflow: hidden; border: 1px solid var(--line-2); box-shadow: 0 8px 30px rgba(0, 0, 0, .25); }
+.pp-head { display: flex; align-items: center; justify-content: space-between; padding: 10px 10px 10px 14px; }
+.pp-page { margin: 0 12px; padding: 12px; border-radius: var(--r-l); background: var(--surface); border: 1px solid var(--line); }
+.pp-scope { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.pp-chip { font-size: 12px; font-weight: 600; padding: 2px 9px; border-radius: 20px; background: var(--mark-soft); color: var(--ink); white-space: nowrap; }
+.pp-excerpt { margin: 9px 0 0; font: 15px/1.45 var(--serif); color: var(--ink-2); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; min-height: 2.9em; }
+.pp-meta { color: var(--ink-2); font-size: 12px; font-variant-numeric: tabular-nums; }
+.pp-page .bar { margin-top: 12px; }
+.pp-times { display: flex; justify-content: space-between; font-size: 11.5px; color: var(--ink-2); margin-top: 4px; font-variant-numeric: tabular-nums; }
+.pp-main { padding: 12px; }
+.pp-transport { display: flex; align-items: center; justify-content: center; gap: 14px; }
+.pp-big { width: 52px; height: 52px; border-radius: 50%; border: 0; background: var(--mark); color: var(--on-mark); display: grid; place-items: center; padding: 0; }
+.pp-big:hover { background: var(--mark-strong); }
+.pp-side { width: 40px; height: 40px; border-radius: 50%; }
+.pp-sub { text-align: center; margin-top: 8px; font-size: 12px; color: var(--ink-2); }
+.pp-rows { margin: 0 12px; border-top: 1px solid var(--line); }
+.pp-row { display: flex; align-items: center; justify-content: space-between; min-height: 44px; border-bottom: 1px solid var(--line); gap: 10px; }
+.pp-foot { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px 12px; font-size: 12px; color: var(--ink-2); }
+.pp .callout { margin: 0 12px 12px; }
+.pp-empty { padding: 6px 20px 18px; text-align: center; }
+.pp-empty h3 { font: 600 17px/1.3 var(--serif); margin: 6px 0 4px; }
+.pp-empty p { color: var(--ink-2); margin: 0 0 14px; }
+.gallery { padding: 28px; display: grid; grid-template-columns: repeat(auto-fill, 342px); gap: 32px 28px; justify-content: center; align-items: start; }
+.gallery figure { margin: 0; }
+.gallery figcaption { font: 12px/1.4 ui-monospace, Menlo, monospace; color: #3b3f4a; margin-bottom: 8px; }
+.gallery figcaption b { display: block; color: #111; }
+.gallery .pp { border-radius: 10px; overflow: hidden; border: 1px solid var(--line-2); box-shadow: 0 6px 22px rgba(0, 0, 0, .16); }
+
+/* ============ Settings ============ */
+.st { min-height: 100%; display: grid; grid-template-columns: 232px minmax(0, 1fr); background: var(--paper); color: var(--ink); }
+.st-nav { border-right: 1px solid var(--line); padding: 22px 12px; position: sticky; top: 0; align-self: start; min-height: 100%; }
+.st-nav .wm { margin: 0 10px 22px; display: inline-block; font-size: 22px; }
+.st-nav button { display: flex; align-items: center; gap: 10px; width: 100%; height: 38px; padding: 0 10px; border: 0; background: none; border-radius: var(--r-m); font-size: 14px; color: var(--ink-2); text-align: left; }
+.st-nav button:hover { background: var(--sunken); color: var(--ink); }
+.st-nav button[aria-current="page"] { background: var(--mark-soft); color: var(--ink); font-weight: 600; }
+.st-nav .saved { margin: 18px 10px 0; font-size: 12px; color: var(--ink-2); display: flex; align-items: center; gap: 6px; }
+.st-main { padding: 36px 40px 80px; max-width: 760px; }
+.st-main h1 { font: 600 30px/1.2 var(--serif); margin: 0 0 4px; letter-spacing: -.01em; }
+.st-main .lede { color: var(--ink-2); margin: 0 0 24px; font-size: 15px; }
+.st-main h2 { font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: .07em; color: var(--ink-2); margin: 28px 0 8px; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-l); }
+.row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 16px; min-height: 56px; }
+.row + .row, .row + .sub, .sub + .row { border-top: 1px solid var(--line); }
+.row .t { min-width: 0; }
+.row .t b { display: block; font-weight: 600; }
+.row .t small { display: block; color: var(--ink-2); font-size: 13px; margin-top: 1px; }
+.row .ctl { display: flex; align-items: center; gap: 8px; flex: none; }
+.row.stack { display: block; }
+.grp-head { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; background: var(--sunken); border-radius: var(--r-l) var(--r-l) 0 0; border-bottom: 1px solid var(--line); }
+.grp-head b { font: 600 16px/1.2 var(--serif); }
+.grp-head small { color: var(--ink-2); margin-left: 8px; font-size: 13px; }
+.tag { font-size: 12px; font-weight: 600; padding: 3px 9px; border-radius: 20px; background: var(--mark); color: var(--on-mark); }
+.key .mask { font: 12.5px ui-monospace, Menlo, monospace; color: var(--ink-2); }
+.key .why { color: var(--danger); font-size: 13px; margin-top: 3px; display: block; }
+.key.flash { animation: flash 1.6s ease-out; }
+@keyframes flash { from { background: var(--mark-soft); } }
+.card + .card { margin-top: 14px; }
+.voices { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 12px; }
+.voice { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--r-m); background: var(--surface); text-align: left; position: relative; }
+.voice:has(input:checked) { border-color: var(--ink); background: var(--mark-soft); }
+.voice input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
+.voice:has(input:focus-visible) { outline: 2px solid var(--ink); outline-offset: 2px; }
+.voice .t { flex: 1; min-width: 0; }
+.voice .t b { display: block; font-size: 14px; }
+.voice .t small { color: var(--ink-2); font-size: 12px; }
+.voice .icon-btn { position: relative; z-index: 1; border: 1px solid var(--line-2); border-radius: 50%; background: var(--surface); }
+.tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.tile { position: relative; border: 1px solid var(--line-2); border-radius: var(--r-m); padding: 10px 12px; background: var(--surface); }
+.tile:has(input:checked) { border-color: var(--ink); background: var(--mark-soft); box-shadow: inset 0 0 0 1px var(--ink); }
+.tile:has(input:focus-visible) { outline: 2px solid var(--ink); outline-offset: 2px; }
+.tile input { position: absolute; inset: 0; opacity: 0; margin: 0; cursor: pointer; }
+.tile b { display: block; font-size: 14px; }
+.tile small { color: var(--ink-2); font-size: 12px; line-height: 1.35; display: block; margin-top: 2px; }
+.swatches { display: flex; gap: 10px; }
+.swatches label { position: relative; width: 30px; height: 30px; border-radius: 50%; background: var(--c); border: 1px solid rgba(0, 0, 0, .12); }
+.swatches label:has(input:checked) { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--ink); }
+.swatches label:has(input:focus-visible) { outline: 2px solid var(--ink); outline-offset: 5px; }
+.swatches input { position: absolute; inset: 0; opacity: 0; margin: 0; cursor: pointer; }
+.preview { padding: 18px 20px; font: 18px/1.65 Georgia, serif; border-radius: var(--r-l) var(--r-l) 0 0; background: #fff; color: #1b1b1b; border-bottom: 1px solid var(--line); }
+.preview .s { background: var(--rc-sent); box-decoration-break: clone; }
+.preview .w { background: var(--rc-word); border-radius: 2px; }
+html.hl-underline .preview .w { background: none; text-decoration: underline 3px var(--mark-strong); text-underline-offset: 3px; }
+html.hl-sentence .preview .w { background: none; }
+html.hl-sentence .preview .s { background: color-mix(in srgb, var(--mark) 34%, transparent); }
+kbd { font: 12px ui-monospace, Menlo, monospace; padding: 3px 7px; border-radius: 6px; border: 1px solid var(--line-2); border-bottom-width: 2px; background: var(--surface); }
+dialog.sheet { border: 1px solid var(--line-2); border-radius: 16px; padding: 0; width: min(520px, calc(100vw - 32px)); background: var(--paper); color: var(--ink); box-shadow: 0 20px 60px rgba(0, 0, 0, .3); }
+dialog.sheet::backdrop { background: rgba(20, 17, 13, .45); }
+.sheet-head { display: flex; align-items: center; justify-content: space-between; padding: 16px 16px 0 22px; }
+.sheet-head h3 { font: 600 20px/1.2 var(--serif); margin: 0; }
+.sheet-body { padding: 14px 22px 22px; }
+.pf-actions { display: flex; gap: 8px; margin-top: 18px; align-items: center; }
+.pf-result { margin-top: 14px; }
+.pf-privacy { font-size: 12px; color: var(--ink-2); margin-left: auto; text-align: right; }
+
+/* ============ Setup ============ */
+.setup { min-height: 100%; background: var(--paper); color: var(--ink); display: flex; flex-direction: column; align-items: center; padding: 44px 20px 60px; }
+.setup-in { width: min(540px, 100%); }
+.steps { display: flex; gap: 6px; margin: 22px 0 26px; padding: 0; list-style: none; }
+.steps li { flex: 1; font-size: 12px; font-weight: 600; color: var(--ink-3); border-top: 3px solid var(--line-2); padding-top: 7px; }
+.steps li[aria-current="step"] { color: var(--ink); border-color: var(--ink); }
+.steps li.done { color: var(--ink-2); border-color: var(--mark-strong); }
+.setup h1 { font: 600 32px/1.15 var(--serif); margin: 0 0 6px; letter-spacing: -.01em; }
+.setup .lede { color: var(--ink-2); font-size: 16px; margin: 0 0 22px; }
+.sample { font: 20px/1.65 Georgia, serif; background: #fff; color: #1b1b1b; border: 1px solid var(--line); border-radius: var(--r-l); padding: 22px 24px; }
+.sample span.on { background: var(--rc-word); border-radius: 2px; }
+.sample.live { background-image: linear-gradient(var(--rc-sent), var(--rc-sent)); }
+.setup-foot { display: flex; align-items: center; gap: 10px; margin-top: 22px; }
+.tips { margin: 22px 0 0; padding: 0; list-style: none; color: var(--ink-2); font-size: 14px; }
+.tips li { padding: 9px 0; border-top: 1px solid var(--line); display: flex; justify-content: space-between; gap: 12px; }
+
+@media (max-width: 720px) {
+  .st { grid-template-columns: 1fr; } .st-nav { position: static; min-height: 0; border-right: 0; border-bottom: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: 4px; padding: 12px; }
+  .st-nav .wm, .st-nav .saved { display: none; } .st-nav button { width: auto; } .st-main { padding: 24px 18px 60px; }
+  .voices, .tiles { grid-template-columns: 1fr; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
+  .spin, .rp[data-status="loading"] .rp-play::before { animation-duration: 1.6s !important; }
+}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-play" viewBox="0 0 20 20"><path class="f" d="M7 4.2v11.6a.6.6 0 0 0 .92.5l8.9-5.8a.6.6 0 0 0 0-1L7.92 3.7A.6.6 0 0 0 7 4.2z"/></symbol>
+  <symbol id="i-pause" viewBox="0 0 20 20"><rect class="f" x="5" y="4" width="3.6" height="12" rx="1"/><rect class="f" x="11.4" y="4" width="3.6" height="12" rx="1"/></symbol>
+  <symbol id="i-back" viewBox="0 0 20 20"><path class="f" d="M15.5 5.2v9.6a.5.5 0 0 1-.78.42L7.6 10.4a.5.5 0 0 1 0-.82l7.12-4.8a.5.5 0 0 1 .78.42z"/><path d="M5 5v10"/></symbol>
+  <symbol id="i-fwd" viewBox="0 0 20 20"><path class="f" d="M4.5 5.2v9.6a.5.5 0 0 0 .78.42l7.12-4.82a.5.5 0 0 0 0-.82L5.28 4.78a.5.5 0 0 0-.78.42z"/><path d="M15 5v10"/></symbol>
+  <symbol id="i-chev" viewBox="0 0 20 20"><path d="M12 5l-5 5 5 5"/></symbol>
+  <symbol id="i-close" viewBox="0 0 20 20"><path d="M5.5 5.5l9 9M14.5 5.5l-9 9"/></symbol>
+  <symbol id="i-sliders" viewBox="0 0 20 20"><path d="M3.5 6.5h5M13.5 6.5h3M3.5 13.5h3M11.5 13.5h5"/><circle cx="11" cy="6.5" r="2.2"/><circle cx="9" cy="13.5" r="2.2"/></symbol>
+  <symbol id="i-check" viewBox="0 0 20 20"><path d="M4.5 10.5l3.5 3.5 7.5-8"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 20 20"><path d="M10 3.5l7 12.5H3z"/><path d="M10 8.5v3.2M10 14v.1"/></symbol>
+  <symbol id="i-info" viewBox="0 0 20 20"><circle cx="10" cy="10" r="7"/><path d="M10 9.2v4.3M10 6.6v.1"/></symbol>
+  <symbol id="i-key" viewBox="0 0 20 20"><circle cx="7" cy="13" r="3.2"/><path d="M9.3 10.7L16 4M13.2 6.8l2.2 2.2"/></symbol>
+  <symbol id="i-wave" viewBox="0 0 20 20"><path d="M4 8v4M7 5.5v9M10 7.5v5M13 4.5v11M16 8v4"/></symbol>
+  <symbol id="i-lines" viewBox="0 0 20 20"><path d="M4 5.5h12M4 10h12M4 14.5h7"/></symbol>
+  <symbol id="i-circleplay" viewBox="0 0 20 20"><circle cx="10" cy="10" r="7"/><path class="f" d="M8.5 7.2v5.6l4.3-2.8z"/></symbol>
+  <symbol id="i-kbd" viewBox="0 0 20 20"><rect x="2.5" y="5" width="15" height="10" rx="2"/><path d="M6 8.7h.1M9 8.7h.1M12 8.7h.1M14.5 8.7h.1M7 11.8h6"/></symbol>
+  <symbol id="i-data" viewBox="0 0 20 20"><path d="M10 3.5v8.5M6.5 8.5L10 12l3.5-3.5M4 15.5h12"/></symbol>
+  <symbol id="i-ext" viewBox="0 0 20 20"><path d="M8.5 5H5v10h10v-3.5M11.5 4.5h4v4M15.5 4.5l-6.5 6.5"/></symbol>
+  <symbol id="i-vol" viewBox="0 0 20 20"><path d="M3.5 8v4h3l4 3.5v-11l-4 3.5z"/><path d="M13.5 7.5a3.6 3.6 0 0 1 0 5"/></symbol>
+  <symbol id="i-retry" viewBox="0 0 20 20"><path d="M15.5 10a5.5 5.5 0 1 1-1.7-4M15.5 3.8V7h-3.2"/></symbol>
+  <symbol id="i-eye" viewBox="0 0 20 20"><path d="M2.5 10s2.7-5 7.5-5 7.5 5 7.5 5-2.7 5-7.5 5-7.5-5-7.5-5z"/><circle cx="10" cy="10" r="2.2"/></symbol>
+  <symbol id="i-down" viewBox="0 0 20 20"><path d="M10 4v11M5.5 10.5L10 15l4.5-4.5"/></symbol>
+  <symbol id="i-logo" viewBox="0 0 20 20"><rect class="f" width="20" height="20" rx="5" style="fill:#1e1b17"/><rect x="3.5" y="11.2" width="13" height="4.6" rx="1" style="fill:#93c8f4;stroke:none"/><path d="M7 14.5v-9h3.4a2.6 2.6 0 0 1 0 5.2H7M10.4 10.7l2.9 3.8" style="stroke:#faf7f2;stroke-width:1.9"/></symbol>
+</svg>
+
+<div class="proto" role="region" aria-label="Prototype controls (not part of the product)">
+  <b>PROTOTYPE</b>
+  <div class="grp" id="g-view"><span>view</span>
+    <button data-view="read">Reading page</button><button data-view="popup">Popup states</button><button data-view="settings">Settings</button><button data-view="setup">First-run setup</button>
+  </div>
+  <div class="grp" id="g-layout"><span>player</span><button data-layout="rail">Rail (recommended)</button><button data-layout="dock">Dock</button></div>
+  <div class="grp"><span>scenario</span>
+    <select id="scenario" aria-label="Scenario">
+      <option value="normal">Normal playback</option>
+      <option value="slow">Slow first response</option>
+      <option value="ratelimit">Rate limit, backup key takes over</option>
+      <option value="badkey">Key rejected mid-read</option>
+      <option value="offline">Provider unreachable</option>
+      <option value="noprovider">No provider set up</option>
+    </select>
+  </div>
+  <div class="grp" id="g-theme"><span>recito</span><button data-theme-set="light">Light</button><button data-theme-set="dark">Dark</button></div>
+  <div class="grp"><span>demo</span><button id="demoSel">Select a passage</button></div>
+  <div class="grp" id="g-page"><span>page</span><button data-page-set="light">Light</button><button data-page-set="dark">Dark</button></div>
+</div>
+
+<div class="stage">
+  <!-- ================= Reading page ================= -->
+  <section class="view" id="v-read" aria-label="Reading page">
+    <div class="bw">
+      <div class="bw-tabs"><div class="bw-tab">The Voice in the Margin — Meridian Review</div><div class="bw-tab off">Inbox (3)</div></div>
+      <div class="bw-bar">
+        <div class="bw-url">meridianreview.example/essays/the-voice-in-the-margin</div>
+        <button class="bw-ext" id="extBtn" aria-label="Recito (extension icon)" aria-expanded="false" title="Recito"><svg width="20" height="20"><use href="#i-logo"/></svg><span class="badge"></span></button>
+      </div>
+      <div class="bw-view" id="bwView">
+        <div class="page" id="page">
+          <div class="site-nav"><strong>The Meridian Review</strong><span>Essays · Science · Books · Subscribe</span></div>
+          <article class="art" id="art">
+            <div class="kicker">Essay</div>
+            <h1>The Voice in the Margin</h1>
+            <p class="dek">For most of history, to read was to be heard. Listening to a page is an old habit we are picking up again.</p>
+            <div class="by">By Ines Okafor · 4 minute read</div>
+            <p>In the late fourth century, a young teacher of rhetoric visited the bishop of Milan and found him doing something odd. The bishop sat with a book open in front of him, and his eyes moved across the page, but his voice was silent and his tongue was still. The visitor thought it strange enough to write down, and he spent a paragraph guessing at the reason. Perhaps the bishop was saving his voice. Perhaps he wanted to avoid questions from the people who drifted in and out of the room.</p>
+            <p>We read that passage now and smile, because silent reading is the only kind most of us practise. But the visitor’s surprise tells us something about his world. A text, for him, was a script for the voice. <em>Reading</em> meant performing it, usually for other people, and a book that nobody spoke was a book at rest.</p>
+            <p>The pages themselves were built for speech. Early manuscripts ran their words together without spaces, so the surest way to find where one word ended was to sound the line out. Punctuation, when it arrived, marked where a reader should breathe. Libraries were noisy rooms, and a scholar who wanted quiet had to ask for it.</p>
+            <h2>What the eye gave up</h2>
+            <p>Silent reading spread slowly, helped along by spaces between words and by the private study. It brought real gains. A silent reader can skim, double back, and hold two passages against each other. She can read faster than anyone can speak, and she can read things she would never say out loud.</p>
+            <blockquote>A book that nobody spoke was a book at rest.</blockquote>
+            <p>Something was traded away, though. A voice sets a pace, and a pace is a kind of attention. When a sentence is spoken you cannot slide past it the way the eye slides past a familiar paragraph. Rhythm does part of the remembering for you, which is why people who cannot recall a page of prose can still recite a poem they learned at nine.</p>
+            <p>Teachers have long known this. Proofreaders read copy aloud because the ear catches the doubled word that the eye forgives. Writers do the same with their drafts, and for the same reason: a sentence that trips the tongue will usually trip the reader as well.</p>
+            <h2>Reading with both</h2>
+            <p>The interesting case is the one in between, where the eye and the ear work on the same text at once. Studies of <a href="#">reading while listening</a> tend to find modest gains in comprehension for long or difficult material, and larger ones for people reading in a second language. The voice carries the reader through the hard stretch, and the page stays there for the moment she wants to stop and look again.</p>
+            <p>That pairing used to need a second person. A parent read while a child followed the line with a finger. Now a synthetic voice can do it, and the finger is a band of colour that moves along the sentence. The technology is new, but the arrangement is very old, and it works for the old reasons.</p>
+            <p>None of this is an argument against silence. It is a reminder that the quiet page was an invention, and a recent one. When you let an essay be read to you while your eyes rest on the words, you are doing what the visitor in Milan would have recognised at once as reading.</p>
+          </article>
+        </div>
+        <div id="playerMount"></div>
+        <button class="btn sm rp-return" id="returnBtn" hidden></button>
+        <div class="pp pp-live" id="ppLive" hidden></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= Popup states ================= -->
+  <section class="view" id="v-popup" aria-label="Popup states" hidden><div class="gallery" id="gallery"></div></section>
+
+  <!-- ================= Settings ================= -->
+  <section class="view" id="v-settings" aria-label="Settings" hidden>
+    <div class="st">
+      <nav class="st-nav" aria-label="Settings sections">
+        <span class="wm">Recito</span>
+        <button data-sec="voice"><svg class="ic" width="18" height="18"><use href="#i-wave"/></svg>Voice &amp; keys</button>
+        <button data-sec="look"><svg class="ic" width="18" height="18"><use href="#i-lines"/></svg>Appearance</button>
+        <button data-sec="play"><svg class="ic" width="18" height="18"><use href="#i-circleplay"/></svg>Playback</button>
+        <button data-sec="keys"><svg class="ic" width="18" height="18"><use href="#i-kbd"/></svg>Shortcuts</button>
+        <button data-sec="data"><svg class="ic" width="18" height="18"><use href="#i-data"/></svg>Data</button>
+        <div class="saved" role="status"><svg class="ic" width="14" height="14"><use href="#i-check"/></svg><span id="savedMsg">Changes save as you make them</span></div>
+      </nav>
+      <main class="st-main">
+        <div data-pane="voice">
+          <h1>Voice &amp; keys</h1>
+          <p class="lede">Recito reads with your own provider account. Keys stay in this browser.</p>
+          <h2>Reading voice</h2>
+          <div class="card">
+            <div class="row"><div class="t"><b>Provider in use</b><small id="provNote"></small></div><div class="ctl"><div class="seg" id="provSeg" role="group" aria-label="Provider in use"></div></div></div>
+            <div class="sub"><div class="voices" id="voiceList" role="radiogroup" aria-label="Voice"></div></div>
+          </div>
+          <h2>Providers and keys</h2>
+          <div id="keysList"></div>
+          <div style="display:flex;align-items:center;gap:12px;margin-top:14px">
+            <button class="btn primary" id="addKey"><svg class="ic" width="16" height="16"><use href="#i-key"/></svg>Add a key</button>
+            <span style="color:var(--ink-2);font-size:13px">Add more than one key per provider and Recito switches to the next when one is rate-limited.</span>
+          </div>
+        </div>
+
+        <div data-pane="look" hidden>
+          <h1>Appearance</h1>
+          <p class="lede">How Recito looks, and how it marks the text it is reading.</p>
+          <h2>Highlight</h2>
+          <div class="card">
+            <div class="preview" aria-label="Highlight preview">Rhythm does part of the remembering for you. <span class="s">A voice sets a <span class="w">pace</span>, and a pace is a kind of attention.</span> When a sentence is spoken you cannot slide past it.</div>
+            <div class="row"><div class="t"><b>Style</b><small>What marks the word being spoken</small></div><div class="ctl"><div class="seg" id="hlSeg" role="group" aria-label="Highlight style"><button data-hl="marker">Marker</button><button data-hl="underline">Underline</button><button data-hl="sentence">Sentence only</button></div></div></div>
+            <div class="row"><div class="t"><b>Ink</b><small>Also the accent colour across Recito</small></div><div class="ctl"><div class="swatches" id="inkSw" role="radiogroup" aria-label="Ink colour">
+              <label style="--c:#93c8f4" title="Blue"><input type="radio" name="ink" value="blue" aria-label="Blue"></label>
+              <label style="--c:#f4b740" title="Amber"><input type="radio" name="ink" value="amber" aria-label="Amber"></label>
+              <label style="--c:#f3a0a6" title="Rose"><input type="radio" name="ink" value="rose" aria-label="Rose"></label>
+              <label style="--c:#8ed6b1" title="Mint"><input type="radio" name="ink" value="mint" aria-label="Mint"></label>
+            </div></div></div>
+          </div>
+          <h2>Theme</h2>
+          <div class="card">
+            <div class="row"><div class="t"><b>Recito's own surfaces</b><small>Player, popup and settings. Web pages are never restyled.</small></div><div class="ctl"><div class="seg" id="themeSeg" role="group" aria-label="Theme"><button data-th="system">System</button><button data-th="light">Light</button><button data-th="dark">Dark</button></div></div></div>
+          </div>
+        </div>
+
+        <div data-pane="play" hidden>
+          <h1>Playback</h1>
+          <p class="lede">Defaults for new reading sessions, and where the player sits.</p>
+          <h2>Listening</h2>
+          <div class="card">
+            <div class="row"><div class="t"><b>Speed</b><small id="spNote">Applies to OpenAI and custom endpoints</small></div><div class="ctl"><span class="stepper" data-speed></span></div></div>
+            <div class="row"><div class="t"><b>Volume</b></div><div class="ctl" style="width:180px"><input type="range" min="0" max="100" value="90" data-vol aria-label="Volume"></div></div>
+            <div class="row"><div class="t"><b>Follow along</b><small>Scroll to keep the spoken sentence in view. Pauses for 5 seconds when you scroll yourself.</small></div><div class="ctl"><input type="checkbox" class="sw" data-auto checked aria-label="Follow along"></div></div>
+            <div class="row"><div class="t"><b>Skip references</b><small>Stop before bibliography and footnote sections</small></div><div class="ctl"><input type="checkbox" class="sw" aria-label="Skip references"></div></div>
+          </div>
+          <h2>Player</h2>
+          <div class="card">
+            <div class="row"><div class="t"><b>Position</b><small>You can also drag the player on any page</small></div><div class="ctl"><div class="seg" id="posSeg" role="group" aria-label="Player position"><button data-pos="rail-right">Right margin</button><button data-pos="rail-left">Left margin</button><button data-pos="dock">Bottom</button></div></div></div>
+            <div class="row"><div class="t"><b>Tuck away while playing</b><small>Shrinks to the play button and time left until you point at it. Margin positions only.</small></div><div class="ctl"><input type="checkbox" class="sw" id="tuckSw" checked aria-label="Tuck away while playing"></div></div>
+            <div class="row"><div class="t"><b>Clicking the toolbar icon</b><small>The shortcut always starts reading directly</small></div><div class="ctl"><div class="seg" id="clickSeg" role="group" aria-label="Toolbar icon click"><button data-click="popup">Opens the popup</button><button data-click="read">Starts reading</button></div></div></div>
+          </div>
+        </div>
+
+        <div data-pane="keys" hidden>
+          <h1>Shortcuts</h1>
+          <p class="lede">These work on any page, even when the player is tucked away.</p>
+          <div class="card">
+            <div class="row"><div class="t"><b>Play or pause</b></div><div class="ctl"><kbd>Alt</kbd><kbd>Shift</kbd><kbd>Space</kbd></div></div>
+            <div class="row"><div class="t"><b>Next sentence</b></div><div class="ctl"><kbd>Alt</kbd><kbd>Shift</kbd><kbd>→</kbd></div></div>
+            <div class="row"><div class="t"><b>Previous sentence</b></div><div class="ctl"><kbd>Alt</kbd><kbd>Shift</kbd><kbd>←</kbd></div></div>
+            <div class="row"><div class="t"><b>Jump to a sentence</b><small>While reading, click any sentence on the page</small></div><div class="ctl"><kbd>Click</kbd></div></div>
+          </div>
+          <p style="margin-top:14px;color:var(--ink-2)">Chrome owns these bindings. <button class="link">Change them in Chrome’s shortcut settings</button></p>
+        </div>
+
+        <div data-pane="data" hidden>
+          <h1>Data</h1>
+          <p class="lede">Everything Recito stores lives in this browser profile.</p>
+          <div class="card">
+            <div class="row"><div class="t"><b>Export settings</b><small>A JSON file with your preferences and provider keys. Treat it like a password.</small></div><div class="ctl"><button class="btn">Export</button></div></div>
+            <div class="row"><div class="t"><b>Import settings</b><small>Replaces current preferences and keys</small></div><div class="ctl"><button class="btn">Import…</button></div></div>
+            <div class="row"><div class="t"><b>Run setup again</b></div><div class="ctl"><button class="btn" data-goto="setup">Open setup</button></div></div>
+          </div>
+          <h2>Reset</h2>
+          <div class="card">
+            <div class="row"><div class="t"><b>Reset preferences</b><small>Keys and saved reading positions are kept</small></div><div class="ctl" id="resetCtl"><button class="btn danger" id="resetBtn">Reset…</button></div></div>
+          </div>
+        </div>
+      </main>
+    </div>
+    <dialog class="sheet" id="keySheet" aria-labelledby="keySheetTitle">
+      <div class="sheet-head"><h3 id="keySheetTitle">Add a key</h3><button class="icon-btn" data-close aria-label="Close"><svg class="ic" width="18" height="18"><use href="#i-close"/></svg></button></div>
+      <div class="sheet-body" id="keySheetBody"></div>
+    </dialog>
+  </section>
+
+  <!-- ================= Setup ================= -->
+  <section class="view" id="v-setup" aria-label="First-run setup" hidden>
+    <div class="setup"><div class="setup-in">
+      <span class="wm" style="font-size:24px">Recito</span>
+      <ol class="steps" id="steps"><li>1 · Connect a provider</li><li>2 · Pick a voice</li><li>3 · Listen</li></ol>
+      <div id="setupBody"></div>
+    </div></div>
+  </section>
+</div>
+<script>
+(() => {
+  'use strict';
+  const $ = (s, r = document) => r.querySelector(s);
+  const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+  const ic = (n, s = 18) => `<svg class="ic" width="${s}" height="${s}" aria-hidden="true"><use href="#i-${n}"/></svg>`;
+  const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+  const root = document.documentElement;
+  const q = new URLSearchParams(location.search);
+  const pick = (k, allowed, d) => (allowed.includes(q.get(k)) ? q.get(k) : d);
+
+  // ---------------------------------------------------------------- mock data
+  const PROV = {
+    openai: { name: 'OpenAI', blurb: 'Six built-in voices, speed control', speed: true, voices: ['Alloy', 'Echo', 'Fable', 'Onyx', 'Nova', 'Shimmer'].map((n) => ({ n })) },
+    mimo: { name: 'Xiaomi MiMo', blurb: 'Chinese and English voices', speed: false, voices: [['冰糖 Bingtang', '中文'], ['茉莉 Moli', '中文'], ['苏打 Suda', '中文'], ['白桦 Baihua', '中文'], ['Mia', 'English'], ['Chloe', 'English'], ['Milo', 'English'], ['Dean', 'English']].map(([n, l]) => ({ n, l })) },
+    custom: { name: 'Custom endpoint', blurb: 'Any OpenAI-compatible speech API', speed: true, voices: [{ n: 'default' }] },
+  };
+  const freshKeys = () => [
+    { id: 1, prov: 'openai', name: 'Personal', mask: 'sk-…5678', health: 'ready' },
+    { id: 2, prov: 'openai', name: 'Work', mask: 'sk-…4321', health: 'ready' },
+    { id: 3, prov: 'mimo', name: 'MiMo', mask: '…cdef', health: 'ready' },
+  ];
+  let keys = freshKeys();
+  const PAGE = { title: 'The Voice in the Margin', host: 'meridianreview.example' };
+
+  const S = {
+    view: pick('view', ['read', 'popup', 'settings', 'setup'], 'read'),
+    layout: pick('player', ['rail', 'dock'], 'rail'),
+    scenario: pick('scenario', ['normal', 'slow', 'ratelimit', 'badkey', 'offline', 'noprovider'], 'normal'),
+    themePref: pick('theme', ['light', 'dark', 'system'], 'light'),
+    page: pick('page', ['light', 'dark'], 'light'),
+    side: 'right', pos: 'center', railTop: null, ink: 'blue', hl: 'marker', tuck: true, auto: true,
+    speed: 1, vol: 90, prov: 'openai', voice: 'Nova', click: 'popup', sec: 'voice',
+  };
+  const P = { status: 'idle', si: 0, wi: 0, read: 0, open: false, note: null, shown: false, tripped: false };
+  const spd = () => (PROV[S.prov].speed ? S.speed : 1);
+  const fmtSpeed = (s) => `${+s.toFixed(2)}×`;
+  const clock = (ms) => { const s = Math.max(0, Math.round(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
+  const fmtLeft = (ms) => (ms < 55000 ? '<1 min' : `${Math.round(ms / 60000)} min`);
+
+  // ---------------------------------------------------------------- text map (stands in for buildTextNodeMap + chunker)
+  const art = $('#art'), page = $('#page'), bwView = $('#bwView');
+  const blocks = $$('h2, p:not(.dek), blockquote', art);
+  const sents = [];
+  let T = 0;
+  const mkRange = (nodes, s, e) => {
+    const r = document.createRange();
+    const a = nodes.find((x) => s < x.e) || nodes.at(-1), b = nodes.find((x) => e <= x.e) || nodes.at(-1);
+    r.setStart(a.n, s - a.s); r.setEnd(b.n, e - b.s); return r;
+  };
+  for (const el of blocks) {
+    const nodes = []; let o = 0, n;
+    const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    while ((n = w.nextNode())) { nodes.push({ n, s: o, e: o + n.data.length }); o += n.data.length; }
+    el._nodes = nodes;
+    const text = el.textContent;
+    for (const m of text.matchAll(/[^.!?]+[.!?]+[”"’)]*\s*|[^.!?]+$/g)) {
+      const start = m.index, end = start + m[0].trimEnd().length;
+      if (end <= start) continue;
+      const words = [];
+      for (const wm of m[0].matchAll(/\S+/g)) {
+        const ws = start + wm.index, we = ws + wm[0].length;
+        let d = (60000 / 178) * clamp(wm[0].length / 5.2, 0.55, 2.1);
+        if (/[,;:—]$/.test(wm[0])) d += 130;
+        words.push({ s: ws, e: we, d, t: 0 });
+      }
+      if (!words.length) continue;
+      words.at(-1).d += 340;
+      for (const x of words) { x.t = T; T += x.d; }
+      sents.push({ el, nodes, start, end: start + m[0].length, words, range: mkRange(nodes, start, end) });
+    }
+  }
+  const curMs = () => sents[P.si].words[P.wi].t;
+
+  // Reading scope: the whole page, or just the text that was selected when reading was requested.
+  const R = { a: 0, b: sents.length - 1, sel: false };
+  const span = () => { const t0 = sents[R.a].words[0].t, w = sents[R.b].words.at(-1); return { t0, tt: w.t + w.d - t0 }; };
+  const scopeWords = () => sents.slice(R.a, R.b + 1).reduce((n, s) => n + s.words.length, 0);
+  const excerpt = (i, j = i) => {
+    let t = '';
+    for (let k = i; k <= j && t.length < 130; k++) { const s = sents[k]; t += (t ? ' ' : '') + s.el.textContent.slice(s.start, s.end).trim(); }
+    return `“${t.length > 130 ? t.slice(0, 128).trimEnd() + '…' : t}”`;
+  };
+  function setScope(a, b, sel) { Object.assign(R, { a, b, sel }); }
+  function refreshScope() {
+    if (P.status !== 'idle') return;
+    const sel = getSelection(), hit = [];
+    if (sel.rangeCount && !sel.isCollapsed && art.contains(sel.anchorNode)) {
+      const r = sel.getRangeAt(0);
+      sents.forEach((s, i) => { if (r.compareBoundaryPoints(Range.END_TO_START, s.range) < 0 && r.compareBoundaryPoints(Range.START_TO_END, s.range) > 0) hit.push(i); });
+    }
+    if (hit.length) setScope(hit[0], hit.at(-1), true); else setScope(0, sents.length - 1, false);
+  }
+
+  const HL = window.Highlight && CSS.highlights ? { word: new Highlight(), sent: new Highlight(), hover: new Highlight() } : null;
+  if (HL) { HL.word.priority = 2; HL.hover.priority = 1; CSS.highlights.set('rc-sent', HL.sent); CSS.highlights.set('rc-word', HL.word); CSS.highlights.set('rc-hover', HL.hover); }
+  function paint() {
+    if (!HL) return;
+    HL.word.clear(); HL.sent.clear();
+    if (P.status === 'idle' && !P.shown) return;
+    if (P.status === 'idle') return;
+    const s = sents[P.si];
+    HL.sent.add(s.range);
+    if (P.status === 'playing' || P.status === 'paused') { const w = s.words[P.wi]; HL.word.add(mkRange(s.nodes, w.s, w.e)); }
+  }
+
+  // ---------------------------------------------------------------- player DOM
+  const player = document.createElement('div');
+  player.className = 'rp';
+  player.setAttribute('role', 'toolbar');
+  player.setAttribute('aria-label', 'Recito player');
+  player.innerHTML = `
+    <div class="rp-bar">
+      <button class="rp-play" data-act="toggle"><i></i></button>
+      <span class="rp-time" data-left></span>
+      <div class="rp-extra"><div>
+        <button class="rp-btn rp-back" data-act="back" aria-label="Previous sentence" title="Previous sentence">${ic('back')}</button>
+        <button class="rp-btn rp-fwd" data-act="fwd" aria-label="Next sentence" title="Next sentence">${ic('fwd')}</button>
+        <span class="rp-sep"></span>
+        <button class="rp-btn rp-speed" data-act="cycle"></button>
+        <button class="rp-btn rp-more" data-act="panel" aria-label="Reading controls" title="Reading controls" aria-expanded="false">${ic('chev')}</button>
+        <button class="rp-btn rp-close" data-act="stop" aria-label="Stop and close" title="Stop and close">${ic('close', 16)}</button>
+      </div></div>
+    </div>
+    <div class="rp-fly">
+      <div class="rp-card rp-note" hidden></div>
+      <div class="rp-card rp-panel" role="group" aria-label="Reading controls" hidden>
+        <div class="rp-title" data-scopelabel></div>
+        <div class="rp-sub" data-scopemeta></div>
+        <div class="rp-seek"><input type="range" min="0" max="1000" value="0" data-seek aria-label="Position in article"></div>
+        <div class="rp-times"><span data-elapsed>0:00</span><span data-remain></span></div>
+        <div class="rp-row"><span>Speed</span><span class="stepper" data-speed></span></div>
+        <div data-speedextra></div>
+        <div class="rp-row"><label for="rpVoice">Voice</label><select class="sel" id="rpVoice" data-voice></select></div>
+        <div class="rp-row"><label for="rpVol">Volume</label><input id="rpVol" type="range" min="0" max="100" data-vol></div>
+        <div class="rp-row" style="border-bottom:0"><label for="rpAuto">Follow along</label><input type="checkbox" class="sw" id="rpAuto" data-auto></div>
+        <div class="rp-foot"><span data-provline></span><button class="link" data-goto="settings">Settings</button></div>
+      </div>
+    </div>`;
+  const returnBtn = $('#returnBtn'), ppLive = $('#ppLive'), extBtn = $('#extBtn');
+  $('#playerMount').replaceWith(player);
+  const bar = $('.rp-bar', player), fly = $('.rp-fly', player), noteEl = $('.rp-note', player), panel = $('.rp-panel', player), seekInput = $('[data-seek]', player);
+  const liveScopes = [player, ppLive];
+  const setLive = (sel, txt) => liveScopes.forEach((sc) => $$(sel, sc).forEach((e) => (e.textContent = txt)));
+
+  // ---------------------------------------------------------------- engine (simulated; the extension gets this from the background)
+  let timer = null, slowT = null, noteT = null, tuckT = null, seeking = false, last = {};
+  function progress(force) {
+    if (force) last = {};
+    const { t0, tt } = span(), T = tt;
+    const ms = clamp(curMs() - t0, 0, tt), p = tt ? ms / tt : 0, sp = spd();
+    const idle = P.status === 'idle', exKey = idle ? `${R.a}-${R.b}` : P.si; // idle: opening words of the scope; active: the sentence being spoken
+    if (exKey !== last.si) { last.si = exKey; setLive('[data-excerpt]', idle ? excerpt(R.a, R.b) : excerpt(P.si)); }
+    const pv = p.toFixed(3);
+    if (pv !== last.p) { last.p = pv; for (const sc of liveScopes) for (const el of sc.querySelectorAll('.rp-play, .bar')) el.style.setProperty('--p', pv); }
+    const el = clock(ms / sp), left = P.status === 'idle' ? fmtLeft(T / sp) : fmtLeft((T - ms) / sp);
+    if (el !== last.el) { last.el = el; setLive('[data-elapsed]', el); setLive('[data-remain]', '−' + clock((T - ms) / sp)); if (!seeking) seekInput.value = Math.round(p * 1000); }
+    if (left !== last.left) { last.left = left; setLive('[data-left]', left); }
+  }
+  function schedule() { clearTimeout(timer); timer = setTimeout(advance, sents[P.si].words[P.wi].d / spd()); }
+  function advance() {
+    const s = sents[P.si];
+    let moved = false;
+    if (P.wi < s.words.length - 1) P.wi++;
+    else {
+      if (P.si >= R.b) return finish();
+      P.si++; P.wi = 0; moved = true;
+    }
+    P.read++;
+    if (trip()) { paint(); progress(); return; }
+    if (moved) follow();
+    paint(); progress(); schedule();
+  }
+  function trip() {
+    if (P.tripped || P.read < 16) return false;
+    if (S.scenario === 'badkey') {
+      P.tripped = true; keys[0].health = 'failed'; keys[0].why = 'Error 401. OpenAI rejected this key.'; keys[1].health = 'cooldown'; keys[1].until = Date.now() + 40000;
+      fail({ title: 'No working OpenAI key left', body: '“Personal” was refused (401) and “Work” is rate-limited for 40 seconds. Reading stopped here and your place is saved.', acts: [['Fix keys', 'fixkey', 1], ['Try again', 'retry']] });
+      return true;
+    }
+    if (S.scenario === 'ratelimit') {
+      P.tripped = true; keys[0].health = 'cooldown'; keys[0].until = Date.now() + 60000;
+      note({ title: 'Switched to your backup key', body: '“Personal” hit a rate limit and rests for 60 seconds. Now reading with “Work”.', ttl: 7000 });
+      renderKeys();
+    }
+    return false;
+  }
+  function fail(n) { clearTimeout(timer); clearTimeout(slowT); P.status = 'error'; P.open = false; note({ ...n, bad: true }); renderKeys(); sync(); }
+  function start(from) {
+    P.shown = true;
+    if (S.scenario === 'noprovider') {
+      P.status = 'idle';
+      note({ bad: true, title: 'Add a voice provider to start listening', body: 'Recito reads with your own OpenAI, MiMo or compatible API key. Setup takes about a minute.', acts: [['Set up Recito', 'setup', 1]] });
+      return sync();
+    }
+    if (from != null) { P.si = from; P.wi = 0; }
+    else if (P.status !== 'error') { P.si = R.a; P.wi = 0; }
+    if (R.sel) getSelection().removeAllRanges();
+    P.read = 0; P.status = 'loading'; if (P.note) note(null);
+    sync(); paint(); follow(true);
+    clearTimeout(timer); clearTimeout(slowT);
+    if (S.scenario === 'slow') slowT = setTimeout(() => P.status === 'loading' && note({ title: 'Still preparing the voice', body: 'OpenAI is taking longer than usual. You can keep reading; playback starts as soon as audio arrives.', slow: true }), 2500);
+    timer = setTimeout(() => {
+      if (S.scenario === 'offline' && !P.tripped) { P.tripped = true; return fail({ title: 'Can’t reach OpenAI', body: 'Check your connection. Your place is saved, so you can pick up from this sentence.', acts: [['Try again', 'retry', 1]] }); }
+      if (P.note?.slow) note(null);
+      P.status = 'playing'; sync(); paint(); schedule();
+    }, S.scenario === 'slow' ? 5200 : 1100);
+  }
+  function toggle() {
+    if (P.status === 'playing') { clearTimeout(timer); P.status = 'paused'; sync(); }
+    else if (P.status === 'paused') { P.status = 'playing'; sync(); schedule(); }
+    else if (P.status !== 'loading') start();
+  }
+  function jump(si) {
+    si = clamp(si, 0, sents.length - 1);
+    if (si < R.a || si > R.b) setScope(0, sents.length - 1, false); // jumping outside a selection widens to the page
+    if (P.status === 'idle' || P.status === 'error') return start(si);
+    if (P.status === 'loading') return;
+    P.si = clamp(si, 0, sents.length - 1); P.wi = 0; P.status = 'playing';
+    sync(); paint(); follow(true); schedule();
+  }
+  function stop() {
+    clearTimeout(timer); clearTimeout(slowT);
+    Object.assign(P, { status: 'idle', si: 0, wi: 0, open: false, shown: false }); setScope(0, sents.length - 1, false); note(null);
+    paint(); sync();
+  }
+  function finish() {
+    const was = R.sel ? 'the selected text' : 'the page';
+    clearTimeout(timer); Object.assign(P, { status: 'idle', si: 0, wi: 0 }); setScope(0, sents.length - 1, false);
+    paint(); sync(); note({ title: 'Finished', body: `Reached the end of ${was}.`, ttl: 5000 });
+  }
+  function setSpeed(v) { if (!PROV[S.prov].speed) return; S.speed = clamp(Math.round(v * 20) / 20, 0.5, 2); syncControls(); progress(true); saved(); }
+
+  // ---------------------------------------------------------------- follow-along + return chip
+  let userScrollUntil = 0, rafScroll = 0;
+  const sentBox = () => { const r = sents[P.si].range.getBoundingClientRect(), v = page.getBoundingClientRect(); return { top: r.top - v.top, bottom: r.bottom - v.top, h: v.height }; };
+  function follow(force) {
+    if (S.view !== 'read') return;
+    const b = sentBox();
+    if (force || (S.auto && Date.now() >= userScrollUntil && (b.top < b.h * 0.12 || b.bottom > b.h * 0.72))) page.scrollTo({ top: page.scrollTop + b.top - b.h * 0.34, behavior: 'smooth' });
+    checkReturn();
+  }
+  function checkReturn() {
+    const active = P.status === 'playing' || P.status === 'paused';
+    if (!active || S.view !== 'read') { returnBtn.hidden = true; return; }
+    const b = sentBox(), off = b.bottom < 0 || b.top > b.h;
+    returnBtn.hidden = !off;
+    if (off) returnBtn.innerHTML = `<span style="display:inline-block;transform:rotate(${b.top > b.h ? 0 : 180}deg)">${ic('down', 14)}</span>Back to the sentence being read`;
+  }
+  const userScrolled = () => { userScrollUntil = Date.now() + 5000; };
+  page.addEventListener('wheel', userScrolled, { passive: true });
+  page.addEventListener('touchmove', userScrolled, { passive: true });
+  page.addEventListener('scroll', () => { if (!rafScroll) rafScroll = requestAnimationFrame(() => { rafScroll = 0; checkReturn(); }); }, { passive: true });
+  returnBtn.addEventListener('click', () => { userScrollUntil = 0; follow(true); });
+
+  // ---------------------------------------------------------------- click a sentence to jump (text scrubber)
+  function sentAt(e) {
+    const el = e.target.closest?.('h2, p, blockquote');
+    if (!el || !el._nodes || e.target.closest('a')) return -1;
+    const r = document.caretRangeFromPoint ? document.caretRangeFromPoint(e.clientX, e.clientY) : (() => { const c = document.caretPositionFromPoint?.(e.clientX, e.clientY); if (!c) return null; const x = document.createRange(); x.setStart(c.offsetNode, c.offset); return x; })();
+    if (!r) return -1;
+    const nd = el._nodes.find((x) => x.n === r.startContainer);
+    if (!nd) return -1;
+    const off = nd.s + r.startOffset;
+    return sents.findIndex((s) => s.el === el && off >= s.start && off <= s.end);
+  }
+  let rafHover = 0, hoverEv = null;
+  art.addEventListener('mousemove', (e) => {
+    if (!HL || !art.classList.contains('scrub')) return;
+    hoverEv = e;
+    if (!rafHover) rafHover = requestAnimationFrame(() => { rafHover = 0; HL.hover.clear(); const i = sentAt(hoverEv); if (i >= 0 && i !== P.si) HL.hover.add(sents[i].range); });
+  });
+  art.addEventListener('mouseleave', () => HL?.hover.clear());
+  art.addEventListener('click', (e) => {
+    if (!art.classList.contains('scrub') || !getSelection().isCollapsed) return;
+    const i = sentAt(e); if (i >= 0) { HL?.hover.clear(); jump(i); }
+  });
+
+  // ---------------------------------------------------------------- notices
+  function note(n) {
+    P.note = n; clearTimeout(noteT);
+    if (n?.ttl) noteT = setTimeout(() => note(null), n.ttl);
+    noteEl.hidden = !n;
+    if (n) {
+      noteEl.className = `rp-card rp-note${n.bad ? ' bad' : ''}`;
+      noteEl.setAttribute('role', n.bad ? 'alert' : 'status');
+      noteEl.innerHTML = `${ic(n.bad ? 'alert' : 'info')}<div style="flex:1;min-width:0"><b>${n.title}</b><p>${n.body}</p>${n.acts ? `<div class="acts">${n.acts.map(([l, a, pr]) => `<button class="btn sm${pr ? ' primary' : ''}" data-act="${a}">${l}</button>`).join('')}</div>` : ''}</div>${n.bad ? '' : `<button class="icon-btn x" data-act="dismiss" aria-label="Dismiss">${ic('close', 14)}</button>`}`;
+    }
+    placeFly(); armTuck();
+    if (!ppLive.hidden) renderLivePopup(true);
+  }
+  function placeFly() {
+    fly.style.top = '';
+    if (S.layout !== 'rail' || (noteEl.hidden && panel.hidden)) return;
+    const r = fly.getBoundingClientRect(), v = bwView.getBoundingClientRect();
+    if (r.bottom > v.bottom - 8) fly.style.top = `${Math.max(v.top + 8 - r.top, v.bottom - 8 - r.bottom)}px`;
+  }
+
+  // ---------------------------------------------------------------- tuck away while playing
+  const setTucked = (v) => player.setAttribute('data-tucked', v);
+  function armTuck() {
+    clearTimeout(tuckT); setTucked(false);
+    if (!(S.tuck && S.layout === 'rail' && P.status === 'playing' && !P.open && !P.note)) return;
+    tuckT = setTimeout(() => (player.matches(':hover') || player.querySelector(':focus-visible') ? armTuck() : setTucked(true)), 2600);
+  }
+  player.addEventListener('pointerenter', () => { clearTimeout(tuckT); setTucked(false); });
+  player.addEventListener('pointerleave', armTuck);
+  player.addEventListener('focusin', () => { clearTimeout(tuckT); setTucked(false); });
+  player.addEventListener('focusout', armTuck);
+
+  // ---------------------------------------------------------------- drag with snapping
+  let drag = null;
+  bar.addEventListener('pointerdown', (e) => {
+    if (e.button || e.target.closest('button, input, select')) return;
+    const r = player.getBoundingClientRect(), v = bwView.getBoundingClientRect();
+    drag = { dx: e.clientX - r.left, dy: e.clientY - r.top, v, w: r.width, h: bar.getBoundingClientRect().height, x0: e.clientX, y0: e.clientY, moved: false };
+    bar.setPointerCapture(e.pointerId);
+  });
+  bar.addEventListener('pointermove', (e) => {
+    if (!drag) return;
+    if (!drag.moved && Math.hypot(e.clientX - drag.x0, e.clientY - drag.y0) < 4) return;
+    drag.moved = true; player.classList.add('dragging');
+    drag.x = clamp(e.clientX - drag.dx - drag.v.left, 4, drag.v.width - drag.w - 4);
+    drag.y = clamp(e.clientY - drag.dy - drag.v.top, 4, drag.v.height - drag.h - 4);
+    Object.assign(player.style, { left: `${drag.x}px`, top: `${drag.y}px`, right: 'auto', bottom: 'auto', transform: 'none' });
+  });
+  const endDrag = () => {
+    if (!drag) return;
+    if (drag.moved) {
+      const cx = drag.x + drag.w / 2;
+      if (S.layout === 'rail') { S.side = cx < drag.v.width / 2 ? 'left' : 'right'; S.railTop = drag.y; }
+      else S.pos = cx < drag.v.width / 3 ? 'left' : cx > (drag.v.width * 2) / 3 ? 'right' : 'center';
+      saved();
+    }
+    drag = null; player.classList.remove('dragging'); sync(); syncSettings();
+  };
+  bar.addEventListener('pointerup', endDrag);
+  bar.addEventListener('pointercancel', endDrag);
+
+  // ---------------------------------------------------------------- popup
+  const provLine = () => {
+    const mine = keys.filter((k) => k.prov === S.prov), ok = mine.filter((k) => k.health === 'ready').length;
+    const cls = ok === mine.length ? '' : ok ? ' wait' : ' bad';
+    const txt = !mine.length ? 'no key' : mine.length === 1 ? (ok ? 'key ready' : 'key unavailable') : ok === mine.length ? `${ok} keys ready` : `${ok} of ${mine.length} keys ready`;
+    return `<span class="dot${cls}"></span>${PROV[S.prov].name} · ${txt}`;
+  };
+  function popupHTML(m) {
+    const head = `<div class="pp-head"><span class="wm">Recito</span><button class="icon-btn" data-goto="settings" aria-label="Settings" title="Settings">${ic('sliders')}</button></div>`;
+    const foot = `<div class="pp-foot"><span data-provline></span><span><kbd>Alt</kbd> <kbd>Shift</kbd> <kbd>Space</kbd></span></div>`;
+    if (m.k === 'setup') return `${head}<div class="pp-empty"><h3>Connect a voice to start</h3><p>Recito reads pages aloud with your own OpenAI, MiMo or compatible API key. Setup takes about a minute.</p><button class="btn primary lg block" data-goto="setup">Set up Recito</button></div>`;
+    if (m.k === 'unreadable') return `${head}<div class="pp-empty"><h3>Nothing to read on this page</h3><p>Chrome keeps extensions out of its own pages and the Web Store. Open an article, or select some text on a page and try again.</p></div>${foot}`;
+    const active = m.k === 'playing' || m.k === 'paused';
+    // What will be read (or is being read): scope + the actual words, not the page title.
+    const isSel = m.id ? !!m.sel : R.sel;
+    const card = `<div class="pp-page"><div class="pp-scope"><span class="pp-chip">${isSel ? 'Selected text' : 'Whole page'}</span><span class="pp-meta"${m.meta ? '' : ' data-scopemeta'}>${m.meta || ''}</span></div><p class="pp-excerpt"${m.excerpt ? '' : ' data-excerpt'}>${m.excerpt || ''}</p>${active ? '<div class="bar"></div><div class="pp-times"><span data-elapsed></span><span data-remain></span></div>' : ''}</div>`;
+    let main = '';
+    if (m.k === 'idle') main = isSel ? `<button class="btn primary lg block" data-act="toggle">${ic('play')}Listen to selection</button><div class="pp-sub"><button class="link" data-act="wholepage">Read the whole page instead</button></div>` : `<button class="btn primary lg block" data-act="toggle">${ic('play')}Listen</button>`;
+    if (m.k === 'resume') main = `<button class="btn primary lg block" data-act="toggle">${ic('play')}Resume · 2 min left</button><div class="pp-sub">You stopped here yesterday. <button class="link">Start from the top</button></div>`;
+    if (m.k === 'loading') main = `<button class="btn lg block" disabled><span class="spin"></span>Preparing the voice…</button>`;
+    if (active) main = `<div class="pp-transport"><button class="icon-btn pp-side" data-act="back" aria-label="Previous sentence">${ic('back', 20)}</button><button class="pp-big" data-act="toggle" aria-label="${m.k === 'playing' ? 'Pause' : 'Play'}">${ic(m.k === 'playing' ? 'pause' : 'play', 24)}</button><button class="icon-btn pp-side" data-act="fwd" aria-label="Next sentence">${ic('fwd', 20)}</button></div><div class="pp-sub">${m.k === 'paused' ? 'Paused · ' : ''}<button class="link" data-act="stop">Stop</button></div>`;
+    if (m.k === 'elsewhere') main = `<div class="callout wait" style="margin:0 0 10px">${ic('info')}<div><b>Reading in another tab</b><p>“How Glaciers Remember” · 6 min left</p><div class="acts"><button class="btn sm">Go to that tab</button></div></div></div><button class="btn lg block" data-act="toggle">${ic('play')}Read this page instead</button>`;
+    const err = m.k === 'error' ? `<div class="callout bad" role="alert">${ic('alert')}<div><b>${m.note.title}</b><p>${m.note.body}</p>${m.note.acts ? `<div class="acts">${m.note.acts.map(([l, a, pr]) => `<button class="btn sm${pr ? ' primary' : ''}" data-act="${a}">${l}</button>`).join('')}</div>` : ''}</div></div>` : '';
+    const rows = `<div class="pp-rows"><div class="pp-row"><label for="ppv${m.id || ''}">Voice</label><select class="sel" id="ppv${m.id || ''}" data-voice></select></div><div class="pp-row" style="border-bottom:0"><span>Speed</span><span class="stepper" data-speed></span></div></div>`;
+    return `${head}${card}${main ? `<div class="pp-main">${main}</div>` : '<div style="height:12px"></div>'}${err}${rows}${foot}`;
+  }
+  const liveModel = () => (S.scenario === 'noprovider' ? { k: 'setup' } : P.status === 'error' ? { k: 'error', note: P.note || { title: 'Playback stopped', body: '' } } : { k: P.status });
+  let liveKind = '';
+  function renderLivePopup(force) {
+    const m = liveModel();
+    if (!force && m.k + R.sel === liveKind) return;
+    liveKind = m.k + R.sel; ppLive.innerHTML = popupHTML(m); syncControls(); progress(true);
+  }
+  function togglePopup(open = ppLive.hidden) {
+    ppLive.hidden = !open; extBtn.setAttribute('aria-expanded', open);
+    if (open) { renderLivePopup(true); (ppLive.querySelector('.pp-main button:not(:disabled), .pp-empty button') || ppLive.querySelector('button'))?.focus({ preventScroll: true }); }
+  }
+  extBtn.addEventListener('click', () => { refreshScope(); S.click === 'read' && S.scenario !== 'noprovider' ? toggle() : togglePopup(); });
+  document.addEventListener('pointerdown', (e) => { if (!ppLive.hidden && !e.target.closest('#ppLive, #extBtn')) togglePopup(false); });
+
+  const GALLERY = [
+    ['Ready', 'Shows the opening words that will be read, not the page title.', { k: 'idle' }],
+    ['Selected text', 'Text was selected when the popup opened: one reply in a chat, or a paragraph.', { k: 'idle', sel: true, meta: '84 words · under 1 min', excerpt: '“Sure. The short version is that a cache trades memory for time, and the hard part is deciding when an entry has gone stale…”' }],
+    ['Resume', 'Saved position within 7 days.', { k: 'resume' }],
+    ['Preparing', 'First audio takes 1 to 3 s. The button says what is happening.', { k: 'loading' }],
+    ['Playing', 'Transport replaces the Listen button. Same progress as the player.', { k: 'playing' }],
+    ['Key problem', 'Same message and actions as the in-page player.', { k: 'error', note: { title: 'No working OpenAI key left', body: '“Personal” was refused (401) and “Work” is rate-limited for 40 seconds.', acts: [['Fix keys', 'fixkey', 1], ['Try again', 'retry']] } }],
+    ['Reading elsewhere', 'Only one tab plays at a time.', { k: 'elsewhere', meta: '2,310 words · about 13 min', excerpt: '“Lichens are slow in a way that is hard to picture. A patch the size of a coin may be older than the wall it grows on…”' }],
+    ['Not set up', 'First run, or all keys removed.', { k: 'setup' }],
+    ['Unreadable page', 'chrome:// pages, the Web Store, empty tabs.', { k: 'unreadable' }],
+  ];
+  $('#gallery').innerHTML = GALLERY.map(([t, d, m], i) => `<figure><figcaption><b>${t}</b>${d}</figcaption><div class="pp" inert>${popupHTML({ meta: m.k === 'playing' || m.k === 'loading' ? '567 words' : '567 words · about 3 min', excerpt: m.k === 'playing' ? '“A voice sets a pace, and a pace is a kind of attention.”' : '“In the late fourth century, a young teacher of rhetoric visited the bishop of Milan and found him doing something odd…”', ...m, id: 'g' + i })}</div></figure>`).join('');
+  $$('#gallery .bar').forEach((e) => e.style.setProperty('--p', '.42'));
+  $$('#gallery [data-elapsed]').forEach((e) => (e.textContent = '2:24'));
+  $$('#gallery [data-remain]').forEach((e) => (e.textContent = '−3:18'));
+
+  // ---------------------------------------------------------------- settings
+  const cd = (k) => clock(Math.max(0, k.until - Date.now()));
+  function chip(k) {
+    if (k.health === 'ready') return `<span class="status ok">${ic('check', 14)}Ready</span>`;
+    if (k.health === 'cooldown') return `<span class="status wait">${ic('info', 14)}Resting <span class="num" data-cd="${k.id}">${cd(k)}</span></span>`;
+    if (k.health === 'testing') return `<span class="status wait"><span class="spin" style="width:12px;height:12px"></span>Testing</span>`;
+    return `<span class="status bad">${ic('alert', 14)}Refused</span>`;
+  }
+  function renderKeys(flashId) {
+    const groups = [...new Set(keys.map((k) => k.prov))];
+    $('#keysList').innerHTML = groups.length ? groups.map((g) => {
+      const mine = keys.filter((k) => k.prov === g);
+      return `<div class="card"><div class="grp-head"><span><b>${PROV[g].name}</b><small>${mine.length} ${mine.length > 1 ? 'keys, used in this order' : 'key'}</small></span>${S.prov === g ? '<span class="tag">In use</span>' : `<button class="btn sm" data-use="${g}">Use ${PROV[g].name}</button>`}</div>${mine.map((k) => `
+        <div class="row key${k.id === flashId ? ' flash' : ''}" data-key="${k.id}"><div class="t"><b>${k.name}</b><span class="mask">${k.mask}</span>${k.health === 'failed' ? `<span class="why">${k.why || 'The provider rejected this key.'}</span>` : k.health === 'cooldown' ? '<small>Rate-limited. Recito retries it automatically.</small>' : ''}</div>
+        <div class="ctl">${k.confirm ? `<span style="font-size:13px">Remove this key?</span><button class="btn sm danger" data-rm="${k.id}">Remove</button><button class="btn sm" data-keep="${k.id}">Keep</button>` : `${chip(k)}${k.health === 'failed' ? `<button class="btn sm" data-retest="${k.id}">Test again</button>` : ''}<button class="btn sm quiet" data-edit="${k.id}">Edit</button><button class="btn sm quiet" data-ask="${k.id}">Remove</button>`}</div></div>`).join('')}</div>`;
+    }).join('') : `<div class="card"><div class="row"><div class="t"><b>No keys yet</b><small>Add a key from OpenAI, Xiaomi MiMo, or any OpenAI-compatible speech service.</small></div></div></div>`;
+    syncControls();
+    tickCooldowns();
+  }
+  let cdTimer = null;
+  function tickCooldowns() {
+    clearInterval(cdTimer);
+    if (S.view !== 'settings' || !keys.some((k) => k.health === 'cooldown')) return;
+    cdTimer = setInterval(() => {
+      let done = false;
+      for (const k of keys) if (k.health === 'cooldown') { if (Date.now() >= k.until) { k.health = 'ready'; done = true; } else { const e = $(`[data-cd="${k.id}"]`); if (e) e.textContent = cd(k); } }
+      if (done) renderKeys();
+    }, 1000);
+  }
+  function renderVoices(host, name) {
+    host.innerHTML = PROV[S.prov].voices.map((v) => `<label class="voice"><input type="radio" name="${name}" value="${v.n}" ${v.n === S.voice ? 'checked' : ''}><span class="t"><b>${v.n}</b>${v.l ? `<small>${v.l}</small>` : ''}</span><button type="button" class="icon-btn" data-preview aria-label="Preview ${v.n}" title="Play a sample">${ic('play', 14)}</button></label>`).join('');
+  }
+  function syncSettings() {
+    const have = [...new Set(keys.map((k) => k.prov))];
+    if (have.length && !have.includes(S.prov)) { S.prov = have[0]; S.voice = PROV[S.prov].voices[0].n; }
+    $('#provSeg').innerHTML = have.map((g) => `<button data-use="${g}" aria-pressed="${S.prov === g}">${PROV[g].name}</button>`).join('');
+    $('#provNote').textContent = PROV[S.prov].speed ? 'Speed adjustable from 0.5× to 2×' : 'MiMo has no speed control. Pages are read at 1×.';
+    $('#spNote').textContent = PROV[S.prov].speed ? 'Applies to OpenAI and custom endpoints' : 'Not available with Xiaomi MiMo, which is in use now';
+    renderVoices($('#voiceList'), 'voice');
+    renderKeys();
+    $$('.st-nav [data-sec]').forEach((b) => (b.dataset.sec === S.sec ? b.setAttribute('aria-current', 'page') : b.removeAttribute('aria-current')));
+    $$('[data-pane]').forEach((p) => (p.hidden = p.dataset.pane !== S.sec));
+    const press = (sel, attr, val) => $$(sel).forEach((b) => b.setAttribute('aria-pressed', b.dataset[attr] === val));
+    press('#hlSeg button', 'hl', S.hl); press('#themeSeg button', 'th', S.themePref); press('#clickSeg button', 'click', S.click);
+    press('#posSeg button', 'pos', S.layout === 'dock' ? 'dock' : `rail-${S.side}`);
+    $$('#inkSw input').forEach((i) => (i.checked = i.value === S.ink));
+    $('#tuckSw').checked = S.tuck;
+  }
+  let savedT = null;
+  function saved() { const e = $('#savedMsg'); e.textContent = 'Saved'; clearTimeout(savedT); savedT = setTimeout(() => (e.textContent = 'Changes save as you make them'), 1600); }
+
+  // shared provider form: used by the settings sheet and by first-run setup
+  let pfN = 0;
+  function providerForm(host, { cta, onDone }) {
+    const uid = `pf${++pfN}`;
+    host.innerHTML = `
+      <div class="tiles" role="radiogroup" aria-label="Provider">${Object.entries(PROV).map(([id, p], i) => `<label class="tile"><input type="radio" name="${uid}" value="${id}" ${i ? '' : 'checked'}><b>${p.name}</b><small>${p.blurb}</small></label>`).join('')}</div>
+      <div data-extra></div>
+      <label class="field"><span>API key</span><span class="inp-wrap" style="display:block"><input class="inp" type="password" data-k autocomplete="off" spellcheck="false"><button type="button" class="icon-btn" data-eye aria-label="Show key" aria-pressed="false">${ic('eye')}</button></span><small data-help></small></label>
+      <div class="pf-result" data-result aria-live="polite"></div>
+      <div class="pf-actions"><button class="btn primary" data-test>${cta}</button><span class="pf-privacy">Stored only in this browser.<br>Sent only to <span data-dest></span>.</span></div>
+      <p class="proto-hint">Prototype: any key connects. Put “bad” in the key to see the failure state.</p>`;
+    const k = $('[data-k]', host), res = $('[data-result]', host), btn = $('[data-test]', host);
+    const cur = () => $(`input[name="${uid}"]:checked`, host).value;
+    const paintProv = () => {
+      const id = cur();
+      $('[data-extra]', host).innerHTML = id === 'custom' ? `<label class="field"><span>Base URL</span><input class="inp" type="url" placeholder="https://api.example.com/v1"></label><label class="field"><span>Model</span><input class="inp" placeholder="tts-1"></label>` : '';
+      $('[data-help]', host).innerHTML = id === 'openai' ? `Create one at <a class="link" href="#" onclick="return false">platform.openai.com/api-keys</a>. It starts with <code>sk-</code>.` : id === 'mimo' ? 'From your Xiaomi MiMo developer account. The v2.5 model is selected for you.' : 'The key your endpoint expects in the Authorization header.';
+      $('[data-dest]', host).textContent = id === 'custom' ? 'your endpoint' : PROV[id].name;
+      k.placeholder = id === 'openai' ? 'sk-…' : 'Paste key';
+      res.innerHTML = '';
+    };
+    host.addEventListener('change', (e) => e.target.name === uid && paintProv());
+    $('[data-eye]', host).addEventListener('click', (e) => { const on = k.type === 'password'; k.type = on ? 'text' : 'password'; e.currentTarget.setAttribute('aria-pressed', on); e.currentTarget.setAttribute('aria-label', on ? 'Hide key' : 'Show key'); });
+    const done = () => onDone({ prov: cur(), mask: `${k.value.slice(0, 3)}…${k.value.slice(-4)}` });
+    btn.addEventListener('click', () => {
+      const id = cur(), name = PROV[id].name;
+      if (!k.value.trim()) { res.innerHTML = `<div class="callout bad">${ic('alert')}<div><b>Paste a key first</b></div></div>`; k.focus(); return; }
+      btn.disabled = true; btn.innerHTML = `<span class="spin"></span>Testing with ${name}…`; res.innerHTML = '';
+      setTimeout(() => {
+        btn.disabled = false; btn.textContent = cta;
+        if (/bad/i.test(k.value)) {
+          res.innerHTML = `<div class="callout bad" role="alert">${ic('alert')}<div><b>${name} refused this key</b><p>Error 401. Check that the whole key was copied and that it is still active in your ${name} account.</p><div class="acts"><button class="btn sm" data-anyway>Save anyway</button></div></div></div>`;
+          $('[data-anyway]', res).addEventListener('click', done);
+        } else {
+          res.innerHTML = `<div class="callout ok">${ic('check')}<div><b>Connected</b><p>${PROV[id].voices.length} voice${PROV[id].voices.length > 1 ? 's' : ''} available.</p></div></div>`;
+          btn.disabled = true; setTimeout(done, 800);
+        }
+      }, 1100);
+    });
+    paintProv();
+  }
+  const sheet = $('#keySheet');
+  $('#addKey').addEventListener('click', () => {
+    providerForm($('#keySheetBody'), { cta: 'Test and save', onDone: ({ prov, mask }) => { const id = Date.now(); keys.push({ id, prov, name: keys.some((k) => k.prov === prov) ? `Key ${keys.filter((k) => k.prov === prov).length + 1}` : PROV[prov].name, mask, health: 'ready' }); sheet.close(); syncSettings(); renderKeys(id); saved(); } });
+    sheet.showModal();
+  });
+  sheet.addEventListener('click', (e) => { if (e.target === sheet || e.target.closest('[data-close]')) sheet.close(); });
+
+  // ---------------------------------------------------------------- first-run setup
+  const setup = { step: 1, timer: null };
+  const SAMPLE = 'A voice sets a pace, and a pace is a kind of attention. When a sentence is spoken you cannot slide past it the way the eye slides past a familiar paragraph.';
+  function renderSetup() {
+    clearTimeout(setup.timer);
+    $$('#steps li').forEach((li, i) => { li.className = i + 1 < setup.step ? 'done' : ''; li.toggleAttribute('aria-current', false); if (i + 1 === setup.step) li.setAttribute('aria-current', 'step'); });
+    const body = $('#setupBody');
+    if (setup.step === 1) {
+      body.innerHTML = `<h1>Connect a voice</h1><p class="lede">Recito reads pages aloud using a speech provider you already have an account with. Pick one and paste its key.</p><div id="setupForm"></div><div class="setup-foot"><button class="link" data-goto="read" style="color:var(--ink-2)">Skip for now</button></div>`;
+      providerForm($('#setupForm'), { cta: 'Test and continue', onDone: ({ prov, mask }) => { if (!keys.some((k) => k.prov === prov)) keys.push({ id: Date.now(), prov, name: PROV[prov].name, mask, health: 'ready' }); S.prov = prov; S.voice = PROV[prov].voices[0].n; setup.step = 2; renderSetup(); syncControls(); } });
+    } else if (setup.step === 2) {
+      body.innerHTML = `<h1>Pick a voice</h1><p class="lede">Play a sample of each. You can switch voices later from the player without leaving the page.</p><div class="card"><div class="voices" id="setupVoices" role="radiogroup" aria-label="Voice"></div></div><div class="setup-foot"><button class="btn primary lg" data-step="3">Continue with <span data-voicename style="margin-left:4px">${S.voice}</span></button><button class="btn quiet lg" data-step="1">Back</button></div>`;
+      renderVoices($('#setupVoices'), 'svoice');
+    } else {
+      body.innerHTML = `<h1>Try it</h1><p class="lede">Press play. This is what Recito does on any article, email or chat.</p><div class="sample" id="sample">${SAMPLE.split(' ').map((w) => `<span>${w}</span>`).join(' ')}</div><div class="setup-foot"><button class="btn primary lg" id="samplePlay">${ic('play')}Play the sample</button><button class="btn lg" data-goto="read">Open a demo article</button></div><ul class="tips"><li><span>Start reading on any page</span><span><kbd>Alt</kbd> <kbd>Shift</kbd> <kbd>Space</kbd></span></li><li><span>Jump around while it reads</span><span>Click any sentence</span></li><li><span>Keep Recito one click away</span><span>Pin it from the puzzle-piece menu</span></li></ul>`;
+      const words = $$('#sample span'); let i = -1;
+      const tick = () => { words[i]?.classList.remove('on'); i++; if (i >= words.length) { $('#sample').classList.remove('live'); $('#samplePlay').innerHTML = `${ic('retry')}Play again`; i = -1; return; } words[i].classList.add('on'); setup.timer = setTimeout(tick, 150 + words[i].textContent.length * 38); };
+      $('#samplePlay').addEventListener('click', () => { clearTimeout(setup.timer); words.forEach((w) => w.classList.remove('on')); i = -1; $('#sample').classList.add('live'); $('#samplePlay').innerHTML = `<span class="spin"></span>Preparing…`; setup.timer = setTimeout(() => { $('#samplePlay').innerHTML = `${ic('pause')}Playing`; tick(); }, 900); });
+    }
+  }
+
+  // ---------------------------------------------------------------- sync
+  function syncControls() {
+    const can = PROV[S.prov].speed, sp = spd();
+    $$('[data-speed]').forEach((el) => {
+      if (!el.firstChild) el.innerHTML = `<button data-sp="-1" aria-label="Slower">−</button><output></output><button data-sp="1" aria-label="Faster">+</button>`;
+      el.children[1].textContent = fmtSpeed(sp); el.children[0].disabled = !can || sp <= 0.5; el.children[2].disabled = !can || sp >= 2;
+      el.title = can ? '' : 'Xiaomi MiMo has no speed control';
+    });
+    $('[data-speedextra]', player).innerHTML = can ? `<div class="rp-presets" role="group" aria-label="Speed presets">${[0.75, 1, 1.25, 1.5, 1.75, 2].map((v) => `<button data-preset="${v}" aria-pressed="${v === S.speed}">${fmtSpeed(v)}</button>`).join('')}</div>` : `<div class="rp-hint">Xiaomi MiMo reads at one speed. Switch to OpenAI or a custom endpoint to change it.</div>`;
+    $$('[data-voice]').forEach((el) => { el.innerHTML = PROV[S.prov].voices.map((v) => `<option${v.n === S.voice ? ' selected' : ''}>${v.n}</option>`).join(''); });
+    $$('[data-vol]').forEach((el) => (el.value = S.vol));
+    $$('[data-auto]').forEach((el) => (el.checked = S.auto));
+    $$('[data-provline]').forEach((el) => (el.innerHTML = provLine()));
+    const sw = scopeWords(), stt = span().tt / sp;
+    $$('[data-scopemeta]').forEach((el) => (el.textContent = `${sw.toLocaleString()} words · ${stt < 55000 ? 'under 1 min' : `about ${fmtLeft(stt)}`}`));
+    $$('[data-scopelabel]').forEach((el) => (el.textContent = R.sel ? 'Reading selected text' : 'Reading the whole page'));
+    $$('[data-voicename]').forEach((el) => (el.textContent = S.voice));
+    const chipEl = $('.rp-speed', player);
+    chipEl.textContent = fmtSpeed(sp); chipEl.disabled = !can;
+    chipEl.setAttribute('aria-label', can ? `Speed ${fmtSpeed(sp)}. Click to change.` : 'Speed fixed at 1× for Xiaomi MiMo');
+    chipEl.title = can ? 'Speed (click to step through presets)' : 'Xiaomi MiMo has no speed control';
+  }
+  function sync() {
+    const playing = P.status === 'playing', v = bwView.getBoundingClientRect();
+    player.hidden = !P.shown;
+    player.dataset.status = P.status; player.dataset.layout = S.layout; player.dataset.side = S.side; player.dataset.pos = S.pos;
+    player.setAttribute('aria-orientation', S.layout === 'rail' ? 'vertical' : 'horizontal');
+    Object.assign(player.style, { left: '', right: '', bottom: '', transform: '', top: '' });
+    if (S.layout === 'rail' && v.height) { if (S.railTop == null) S.railTop = Math.max(8, v.height * 0.5 - 120); player.style.top = `${clamp(S.railTop, 8, Math.max(8, v.height - 250))}px`; }
+    const pb = $('.rp-play', player), label = P.status === 'loading' ? 'Preparing the voice' : playing ? 'Pause' : P.status === 'error' ? 'Try again' : 'Play';
+    pb.setAttribute('aria-label', label); pb.title = label; pb.setAttribute('aria-busy', P.status === 'loading');
+    $('i', pb).innerHTML = ic(playing ? 'pause' : P.status === 'error' ? 'retry' : 'play', 18);
+    $('.rp-more', player).setAttribute('aria-expanded', P.open);
+    panel.hidden = !P.open;
+    extBtn.dataset.live = playing;
+    art.classList.toggle('scrub', P.status === 'playing' || P.status === 'paused');
+    if (!ppLive.hidden) renderLivePopup();
+    syncControls(); progress(true); placeFly(); armTuck(); checkReturn();
+  }
+  function applyGlobal() {
+    const theme = S.themePref === 'system' ? (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : S.themePref;
+    root.dataset.theme = theme; root.dataset.ink = S.ink;
+    root.classList.toggle('hl-underline', S.hl === 'underline'); root.classList.toggle('hl-sentence', S.hl === 'sentence');
+    root.classList.toggle('page-dark', S.page === 'dark'); page.classList.toggle('dark', S.page === 'dark');
+    $$('.view').forEach((el) => (el.hidden = el.id !== `v-${S.view}`));
+    const press = (sel, attr, val) => $$(sel).forEach((b) => b.setAttribute('aria-pressed', b.dataset[attr] === val));
+    press('#g-view button', 'view', S.view); press('#g-layout button', 'layout', S.layout); press('#g-theme button', 'themeSet', theme); press('#g-page button', 'pageSet', S.page);
+    $('#scenario').value = S.scenario;
+    const u = new URLSearchParams({ view: S.view, player: S.layout, scenario: S.scenario, theme: S.themePref, page: S.page });
+    try { history.replaceState(null, '', `?${u}`); } catch { /* sandboxed preview */ }
+    if (S.view === 'setup') renderSetup();
+    syncSettings(); sync();
+  }
+  function setView(v, sec) { S.view = v; if (sec) S.sec = sec; if (v !== 'read') togglePopup(false); applyGlobal(); $(`#v-${v}`).scrollTop = 0; }
+
+  // ---------------------------------------------------------------- events
+  const ACT = {
+    toggle, stop, back: () => P.status !== 'idle' && jump(Math.max(R.a, P.si - 1)), fwd: () => P.status !== 'idle' && jump(Math.min(R.b, P.si + 1)),
+    wholepage: () => { setScope(0, sents.length - 1, false); renderLivePopup(true); },
+    panel: () => { P.open = !P.open; sync(); },
+    cycle: () => { const ps = [1, 1.25, 1.5, 1.75, 2, 0.75]; setSpeed(ps[(ps.indexOf(S.speed) + 1) % ps.length] ?? 1); },
+    dismiss: () => note(null),
+    retry: () => { if (S.scenario === 'badkey') keys.forEach((k) => (k.health = 'ready')); renderKeys(); start(P.si); },
+    fixkey: () => { setView('settings', 'voice'); const bad = keys.find((k) => k.health === 'failed'); if (bad) renderKeys(bad.id); },
+    setup: () => { setup.step = 1; setView('setup'); },
+  };
+  document.addEventListener('click', (e) => {
+    const t = e.target.closest('[data-act],[data-sp],[data-preset],[data-goto],[data-view],[data-layout],[data-theme-set],[data-page-set],[data-sec],[data-use],[data-hl],[data-th],[data-pos],[data-click],[data-ask],[data-keep],[data-rm],[data-retest],[data-edit],[data-preview],[data-step]');
+    if (!t) return;
+    const d = t.dataset;
+    if (d.act) return ACT[d.act]?.();
+    if (d.sp) return setSpeed(S.speed + 0.1 * +d.sp);
+    if (d.preset) return setSpeed(+d.preset);
+    if (d.goto) { if (d.goto === 'setup') setup.step = 1; return setView(d.goto); }
+    if (d.view) return setView(d.view);
+    if (d.layout) { S.layout = d.layout; P.open = false; return applyGlobal(); }
+    if (d.themeSet) { S.themePref = d.themeSet; return applyGlobal(); }
+    if (d.pageSet) { S.page = d.pageSet; return applyGlobal(); }
+    if (d.sec) { S.sec = d.sec; syncSettings(); return; }
+    if (d.use) { S.prov = d.use; S.voice = PROV[S.prov].voices[0].n; saved(); syncSettings(); return sync(); }
+    if (d.hl) { S.hl = d.hl; saved(); return applyGlobal(); }
+    if (d.th) { S.themePref = d.th; saved(); return applyGlobal(); }
+    if (d.pos) { if (d.pos === 'dock') S.layout = 'dock'; else { S.layout = 'rail'; S.side = d.pos.slice(5); } saved(); return applyGlobal(); }
+    if (d.click) { S.click = d.click; saved(); return syncSettings(); }
+    if (d.ask || d.keep) { const k = keys.find((x) => x.id === +(d.ask || d.keep)); k.confirm = !!d.ask; renderKeys(); $(`[data-key="${k.id}"] button`)?.focus(); return; }
+    if (d.rm) { keys = keys.filter((x) => x.id !== +d.rm); saved(); syncSettings(); return sync(); }
+    if (d.retest) { const k = keys.find((x) => x.id === +d.retest); k.health = 'testing'; renderKeys(); setTimeout(() => { k.health = 'ready'; renderKeys(k.id); sync(); }, 1100); return; }
+    if (d.edit) { $('#addKey').click(); $('#keySheetTitle').textContent = 'Edit key'; return; }
+    if (d.preview !== undefined) { e.preventDefault(); t.innerHTML = `<span class="spin" style="width:12px;height:12px"></span>`; setTimeout(() => { t.innerHTML = ic('pause', 14); setTimeout(() => (t.innerHTML = ic('play', 14)), 1500); }, 500); return; }
+    if (d.step) { setup.step = +d.step; return renderSetup(); }
+  });
+  $('#addKey').addEventListener('click', () => ($('#keySheetTitle').textContent = 'Add a key'), true);
+  $('#demoSel').addEventListener('click', () => {
+    if (S.view !== 'read') setView('read');
+    if (P.status !== 'idle' || P.shown) stop();
+    const el = blocks.find((b) => b.textContent.startsWith('Something was traded away'));
+    const r = document.createRange(); r.selectNodeContents(el);
+    const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r);
+    const v = page.getBoundingClientRect(), b = el.getBoundingClientRect();
+    page.scrollTo({ top: page.scrollTop + b.top - v.top - v.height * 0.3 });
+  });
+  document.addEventListener('input', (e) => {
+    const t = e.target;
+    if (t.matches('[data-vol]')) { S.vol = +t.value; $$('[data-vol]').forEach((x) => x !== t && (x.value = S.vol)); }
+    if (t.matches('[data-seek]')) { const { t0, tt } = span(), ms = t0 + (t.value / 1000) * tt; let i = sents.findIndex((s) => s.words.at(-1).t + s.words.at(-1).d > ms); if (i < 0 || i > R.b) i = R.b; if (i !== P.si) jump(i); }
+  });
+  document.addEventListener('change', (e) => {
+    const t = e.target;
+    if (t.matches('[data-voice]')) { S.voice = t.value; saved(); syncControls(); if ($('#voiceList')) renderVoices($('#voiceList'), 'voice'); }
+    if (t.matches('[data-auto]')) { S.auto = t.checked; saved(); syncControls(); }
+    if (t.matches('input[name="voice"], input[name="svoice"]')) { S.voice = t.value; saved(); syncControls(); }
+    if (t.name === 'ink') { S.ink = t.value; saved(); applyGlobal(); }
+    if (t.id === 'tuckSw') { S.tuck = t.checked; saved(); armTuck(); }
+    if (t.id === 'scenario') { S.scenario = t.value; P.tripped = false; keys = freshKeys(); stop(); applyGlobal(); if (S.scenario === 'noprovider' && S.view === 'read') start(); }
+  });
+  seekInput.addEventListener('pointerdown', () => (seeking = true));
+  seekInput.addEventListener('pointerup', () => (seeking = false));
+  $('#resetBtn').addEventListener('click', () => {
+    const c = $('#resetCtl');
+    c.innerHTML = `<span style="font-size:13px">Reset all preferences?</span><button class="btn sm danger" id="resetYes">Reset</button><button class="btn sm" id="resetNo">Keep</button>`;
+    const back = () => { c.innerHTML = `<button class="btn danger" id="resetBtn2">Reset…</button>`; };
+    $('#resetYes').onclick = () => { Object.assign(S, { ink: 'blue', hl: 'marker', tuck: true, auto: true, speed: 1, vol: 90, click: 'popup' }); back(); saved(); applyGlobal(); };
+    $('#resetNo').onclick = back;
+    $('#resetYes').focus();
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') { if (!ppLive.hidden) { togglePopup(false); extBtn.focus(); } else if (P.open) { P.open = false; sync(); $('.rp-more', player).focus(); } return; }
+    if (!(e.altKey && e.shiftKey) || S.view !== 'read') return;
+    if (e.code === 'Space') { e.preventDefault(); refreshScope(); toggle(); }
+    if (e.code === 'ArrowRight') { e.preventDefault(); ACT.fwd(); }
+    if (e.code === 'ArrowLeft') { e.preventDefault(); ACT.back(); }
+  });
+  addEventListener('resize', () => sync());
+  matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => S.themePref === 'system' && applyGlobal());
+
+  // Standalone: fill the window. Embedded in a frame: keep the fixed stage height from CSS.
+  const fit = () => { if (window.top === window) $('.stage').style.height = `${Math.max(480, innerHeight - $('.proto').offsetHeight)}px`; };
+  let framed = false; try { framed = window.top !== window; } catch { framed = true; }
+  if (!framed) { fit(); addEventListener('resize', fit); }
+  applyGlobal();
+  if (S.scenario === 'noprovider' && S.view === 'read') start();
+  window.__recito = { S, P, start, toggle, jump, setView }; // for prototype screenshots only
+})();
+</script>
+</body>
+</html>
