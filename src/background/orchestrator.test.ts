@@ -740,3 +740,41 @@ it('does not overwrite a different default provider voice when changing the sess
   );
   mockRuntimeSendMessage.mockResolvedValue(undefined);
 });
+
+it('plays and saves the replacement for a retired saved voice', async () => {
+  vi.clearAllMocks();
+  stopPlayback();
+  mockGetActiveProvider.mockResolvedValue({
+    id: 'retired-voice',
+    providerId: 'openai',
+    name: 'Personal',
+    apiKey: 'fixture',
+  });
+  const settings = {
+    activeProviderGroup: 'openai',
+    activeVoiceId: 'nova',
+    playback: { defaultSpeed: 1, defaultVolume: 1 },
+  };
+  mockGetSettings.mockResolvedValue(settings);
+  const synthesize = vi.fn().mockRejectedValue(new Error('Fixture failure'));
+  mockGetProvider.mockReturnValue({
+    name: 'OpenAI',
+    listVoices: vi.fn().mockResolvedValue([
+      { id: 'marin', name: 'Marin' },
+      { id: 'coral', name: 'Coral' },
+    ]),
+    resolveVoiceId: (id: string) => (id === 'nova' ? 'coral' : id),
+    synthesize,
+  });
+  mockSendTabMessage.mockImplementation(async (_tab, message) => {
+    if (message.type === MSG.EXTRACT_CONTENT)
+      return { totalChunks: 1, scope: { kind: 'page', wordCount: 3 } };
+    if (message.type === MSG.GET_PAGE_URL) return 'https://example.com/retired-voice';
+    if (message.type === MSG.GET_CHUNK) return { text: 'Hello there.', wordCount: 2, index: 0 };
+  });
+  await startPlayback(1);
+  const { saveSettings } = await import('@shared/storage');
+  expect(saveSettings).toHaveBeenCalledWith({ ...settings, activeVoiceId: 'coral' });
+  expect(synthesize.mock.calls[0][1]).toEqual({ id: 'coral', name: 'Coral' });
+  expect(playbackState.getState().voiceId).toBe('coral');
+});

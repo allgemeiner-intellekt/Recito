@@ -40,7 +40,7 @@ export const PROVIDER_LIST: ProviderMeta[] = [
   {
     id: 'openai',
     name: 'OpenAI',
-    description: 'High-quality TTS with 6 built-in voices',
+    description: 'Realtime voices via gpt-realtime-2.1-mini',
     website: 'https://platform.openai.com/api-keys',
   },
   {
