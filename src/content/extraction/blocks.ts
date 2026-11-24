@@ -144,13 +144,18 @@ function createRenderedCache(display: (el: Element) => string): (el: Element) =>
     const cached = cache.get(el);
     if (cached !== undefined) return cached;
     let result: boolean;
-    if (typeof el.checkVisibility === 'function') {
+    const parent = el.parentElement;
+    const closedDetails =
+      parent?.tagName === 'DETAILS' && !(parent as HTMLDetailsElement).open && el.tagName !== 'SUMMARY';
+    if (display(el) === 'contents') {
+      // No box of its own, so checkVisibility() is always false even though
+      // its text renders. Judge by its own visibility and its parent's box.
+      result =
+        !closedDetails && getComputedStyle(el).visibility === 'visible' && (!parent || check(parent));
+    } else if (typeof el.checkVisibility === 'function') {
       result = el.checkVisibility({ visibilityProperty: true });
     } else {
       // Fallback for environments without checkVisibility (tests, old Chrome).
-      const parent = el.parentElement;
-      const closedDetails =
-        parent?.tagName === 'DETAILS' && !(parent as HTMLDetailsElement).open && el.tagName !== 'SUMMARY';
       result =
         display(el) !== 'none' && !(el as HTMLElement).hidden && !closedDetails && (!parent || check(parent));
     }

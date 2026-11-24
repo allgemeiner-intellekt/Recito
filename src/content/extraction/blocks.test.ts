@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { chunkBlocks } from '@shared/chunker';
 import type { TextChunk } from '@shared/types';
 import { collectBlocks } from './blocks';
@@ -7,6 +7,7 @@ import { buildTextNodeMap } from './dom-mapper';
 
 afterEach(() => {
   document.body.innerHTML = '';
+  vi.restoreAllMocks();
 });
 
 function read(html: string, options: Parameters<typeof collectBlocks>[1] = {}) {
@@ -75,6 +76,32 @@ describe('collectBlocks', () => {
       'Shown',
       'Open content.',
     ]);
+  });
+
+  it('reads text inside display:contents wrappers, which have no box of their own', () => {
+    // Chromium's checkVisibility() is false for boxless elements; mimic it.
+    Object.defineProperty(Element.prototype, 'checkVisibility', {
+      configurable: true,
+      value(this: Element) {
+        const own = getComputedStyle(this).display;
+        if (own === 'contents' || own === 'none') return false;
+        for (let el = this.parentElement; el; el = el.parentElement) {
+          if (getComputedStyle(el).display === 'none') return false;
+        }
+        return true;
+      },
+    });
+    try {
+      const { chunks } = read(
+        '<p><span style="display:contents">Wrapped text.</span></p>' +
+          '<p><span style="display:contents;visibility:hidden">Invisible.</span></p>' +
+          '<div style="display:none"><span style="display:contents">Under hidden.</span></div>' +
+          '<details><summary>S</summary><span style="display:contents">Collapsed.</span></details>',
+      );
+      expect(chunks.map((c) => c.text)).toEqual(['Wrapped text.', 'S']);
+    } finally {
+      delete (Element.prototype as { checkVisibility?: unknown }).checkVisibility;
+    }
   });
 
   it('separates words at line breaks and inline-block boundaries', () => {
