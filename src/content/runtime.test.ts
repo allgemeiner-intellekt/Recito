@@ -15,6 +15,7 @@ vi.mock('./extraction/extractor', async () => {
       const textContent = blocks.map((b) => b.text).join('\n\n');
       return {
         title: 'Private title',
+        include: (node: Text) => article.contains(node),
         blocks,
         textMap,
         textContent,
@@ -138,4 +139,49 @@ it('refreshes cached page text when skipping references is enabled or disabled',
   skip = false;
   expect(await read()).toContain('Reference words');
   await handleMessage({ type: MSG.STOP });
+});
+
+it('re-extracts on replay when hidden content opens or text changes', async () => {
+  document.body.innerHTML =
+    '<article><p>Main summer text.</p><details><summary>Appendix</summary><p>Hidden detail.</p></details></article>';
+  window.getSelection()?.removeAllRanges();
+  vi.stubGlobal('CSS', { highlights: new Map() });
+  vi.stubGlobal(
+    'Highlight',
+    class extends Set<Range> {
+      priority = 0;
+    },
+  );
+  vi.stubGlobal('chrome', {
+    storage: {
+      local: {
+        get: vi.fn(async (key: string) => ({
+          [key]: key === 'ir-settings' ? DEFAULT_SETTINGS : undefined,
+        })),
+        set: vi.fn().mockResolvedValue(undefined),
+      },
+      onChanged: { addListener: vi.fn(), removeListener: vi.fn() },
+    },
+    runtime: { sendMessage: vi.fn().mockResolvedValue({ ok: true }) },
+  });
+  const { handleMessage } = await import('./runtime');
+  const read = async () => {
+    const response = (await handleMessage({ type: MSG.EXTRACT_CONTENT, fromSelection: false })) as {
+      totalChunks: number;
+      reused?: boolean;
+    };
+    const chunks = [];
+    for (let i = 0; i < response.totalChunks; i++)
+      chunks.push(
+        ((await handleMessage({ type: MSG.GET_CHUNK, index: i })) as { text: string }).text,
+      );
+    await handleMessage({ type: MSG.STOP });
+    return { text: chunks.join(' '), reused: response.reused === true };
+  };
+  expect(await read()).toEqual({ text: 'Main summer text. Appendix', reused: false });
+  expect(await read()).toEqual({ text: 'Main summer text. Appendix', reused: true });
+  document.querySelector('details')!.open = true;
+  expect(await read()).toEqual({ text: 'Main summer text. Appendix Hidden detail.', reused: false });
+  document.querySelector('p')!.firstChild!.nodeValue = 'Main winter text.';
+  expect((await read()).text).toContain('winter');
 });

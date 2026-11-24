@@ -56,6 +56,24 @@ describe('collectBlocks', () => {
     ]);
   });
 
+  it('keeps a heading whole however CSS lays out its inside', () => {
+    const { chunks } = read(
+      '<p>Intro text. <span role="heading">1. Inline title</span> More prose here.</p>' +
+        '<h2 style="display:flex"><span style="display:block">2.</span><span style="display:block">Flex title</span></h2>',
+    );
+    expect(chunks.map((c) => c.text)).toEqual([
+      'Intro text.',
+      '1. Inline title',
+      'More prose here.',
+      '2. Flex title',
+    ]);
+  });
+
+  it('starts a new paragraph at a blank line made of <br>s', () => {
+    const { chunks } = read('<p>Hello<br><br>This is the second paragraph<br>still second.</p>');
+    expect(chunks.map((c) => c.text)).toEqual(['Hello', 'This is the second paragraph still second.']);
+  });
+
   it('collapses source whitespace but highlights the exact characters', () => {
     const { chunks, map } = read('<p>\n    Spread   over\n    several\tlines. <b>Bold</b> word.\n</p>');
     expect(chunks.map((c) => c.text)).toEqual(['Spread over several lines.', 'Bold word.']);
@@ -68,6 +86,8 @@ describe('collectBlocks', () => {
         '<div style="display:none">Hidden menu.</div>' +
         '<details><summary>Deep dive</summary><p>Collapsed content.</p></details>' +
         '<details open><summary>Shown</summary><p>Open content.</p></details>' +
+        '<details><summary>Tail</summary>Collapsed direct text</details>' +
+        '<div style="visibility:hidden">Invisible <span style="visibility:visible">Override.</span></div>' +
         '<script>var code = 1;</script><style>p { color: red }</style>',
     );
     expect(chunks.map((c) => c.text)).toEqual([
@@ -75,6 +95,8 @@ describe('collectBlocks', () => {
       'Deep dive',
       'Shown',
       'Open content.',
+      'Tail',
+      'Override.',
     ]);
   });
 
@@ -96,9 +118,10 @@ describe('collectBlocks', () => {
         '<p><span style="display:contents">Wrapped text.</span></p>' +
           '<p><span style="display:contents;visibility:hidden">Invisible.</span></p>' +
           '<div style="display:none"><span style="display:contents">Under hidden.</span></div>' +
-          '<details><summary>S</summary><span style="display:contents">Collapsed.</span></details>',
+          '<details><summary>S</summary><span style="display:contents">Collapsed.</span></details>' +
+          '<div style="visibility:hidden"><span style="display:contents;visibility:visible">Shown anyway.</span></div>',
       );
-      expect(chunks.map((c) => c.text)).toEqual(['Wrapped text.', 'S']);
+      expect(chunks.map((c) => c.text)).toEqual(['Wrapped text.', 'S', 'Shown anyway.']);
     } finally {
       delete (Element.prototype as { checkVisibility?: unknown }).checkVisibility;
     }

@@ -1,5 +1,6 @@
 import type { TextChunk, TextNodeEntry } from '@shared/types';
 import type { HighlightManager } from './highlight-manager';
+import { chunkSpans } from './utils';
 import { useToolbarStore } from '../state/store';
 
 let manager: HighlightManager | null = null;
@@ -7,6 +8,7 @@ let chunks: TextChunk[] = [];
 let seekCallback: ((chunkIndex: number) => void) | null = null;
 let outsideCallback: ((offset: number) => void) | undefined;
 let nodeMap: WeakMap<Text, TextNodeEntry> | null = null;
+let spansCache = new Map<TextChunk, [number, number][]>();
 let lastHoveredChunkIndex = -1;
 let rafId = 0;
 
@@ -54,11 +56,25 @@ function resolveChunkAtPoint(x: number, y: number): number {
   const globalOffset = entry.globalStart + caret.offset;
 
   for (const chunk of chunks) {
-    if (globalOffset >= chunk.startOffset && globalOffset < chunk.endOffset) {
+    if (
+      globalOffset >= chunk.startOffset &&
+      globalOffset < chunk.endOffset &&
+      spansOf(chunk).some(([start, end]) => globalOffset >= start && globalOffset < end)
+    ) {
       return chunk.index;
     }
   }
   return -1;
+}
+
+/** The chunk's highlightable spans, excluding unspoken text inside it. */
+function spansOf(chunk: TextChunk): [number, number][] {
+  let spans = spansCache.get(chunk);
+  if (!spans) {
+    spans = chunkSpans(chunk, manager?.getFullText() ?? '');
+    spansCache.set(chunk, spans);
+  }
+  return spans;
 }
 
 function onMouseMove(e: MouseEvent): void {
@@ -90,7 +106,7 @@ function onMouseMove(e: MouseEvent): void {
     lastHoveredChunkIndex = chunkIndex;
     const chunk = chunks[chunkIndex];
     if (chunk) {
-      manager.highlightScrubHover(chunk.startOffset, chunk.endOffset);
+      manager.highlightScrubHover(spansOf(chunk));
       document.documentElement.classList.add('ir-scrub-active');
     }
   });
@@ -129,6 +145,7 @@ export function initTextScrubber(
 
   manager = highlightManager;
   chunks = textChunks;
+  spansCache = new Map();
   seekCallback = onSeek;
   outsideCallback = onOutsideSelection;
 

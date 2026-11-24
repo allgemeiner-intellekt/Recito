@@ -4,6 +4,7 @@ import type { WereadChapter } from '../weread/reader';
 import { WereadHighlighter } from '../weread/highlighter';
 import { WereadScrubber } from '../weread/scrubber';
 import { HighlightManager } from './highlight-manager';
+import { chunkSpans } from './utils';
 import { initAutoScroll, destroyAutoScroll } from './auto-scroll';
 import { initTextScrubber, destroyTextScrubber } from './text-scrubber';
 
@@ -76,7 +77,7 @@ export class PlaybackAnnotations {
     // DOM offsets use UTF-16; keep supplementary characters intact.
     if (offset > 0 && /[\uDC00-\uDFFF]/.test(chunk.text[offset])) offset--;
     const length = (chunk.text.codePointAt(offset) ?? 0) > 0xffff ? 2 : 1;
-    this.highlighter.highlightSentence(chunk.startOffset, chunk.endOffset);
+    this.highlightSentence(chunk, 0, chunk.text.length);
     this.highlighter.highlightWord(...domSpan(chunk, offset, offset + length));
   }
 
@@ -91,10 +92,17 @@ export class PlaybackAnnotations {
     const sentence = splitSentences(chunk.text).find(
       (item) => start >= item.startOffset && start < item.endOffset,
     );
-    this.highlighter.highlightSentence(
-      ...domSpan(chunk, sentence?.startOffset ?? 0, sentence?.endOffset ?? chunk.text.length),
-    );
+    this.highlightSentence(chunk, sentence?.startOffset ?? 0, sentence?.endOffset ?? chunk.text.length);
     this.onScroll();
+  }
+
+  private highlightSentence(chunk: TextChunk, start: number, end: number): void {
+    const spans = chunkSpans(chunk, this.highlighter.getFullText(), start, end);
+    if (this.highlighter instanceof HighlightManager) {
+      this.highlighter.highlightSentenceSpans(spans);
+    } else {
+      this.highlighter.highlightSentence(spans[0][0], spans[spans.length - 1][1]);
+    }
   }
 
   returnToReading(): void {

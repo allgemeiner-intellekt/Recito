@@ -68,6 +68,9 @@ function cleanupNativeMediaDetection(): void {
 let currentChunks: TextChunk[] = [];
 /** Text map of document.body that page/selection chunk offsets refer to. */
 let currentTextMap: TextMapResult | null = null;
+/** Content filter and spoken text of the cached page extraction, to detect page changes. */
+let currentInclude: ((node: Text) => boolean) | null = null;
+let currentSpokenText = '';
 let selectionScope = false;
 let currentExtraction: ExtractionCacheEntry | null = null;
 
@@ -126,7 +129,14 @@ export async function handleMessage(message: ExtensionMessage): Promise<unknown>
         canReuseExtraction(currentExtraction, extractionKey) &&
         currentChunks.length === currentExtraction?.totalChunks &&
         currentTextMap &&
-        isTextMapIntact(currentTextMap)
+        currentInclude &&
+        isTextMapIntact(currentTextMap) &&
+        spokenText(
+          skipReferences(
+            collectBlocks(currentTextMap, { include: currentInclude }),
+            readingSettings.playback.skipReferences,
+          ),
+        ) === currentSpokenText
       ) {
         store._setTotalChunks(currentChunks.length);
         store.showToolbar();
@@ -157,8 +167,12 @@ export async function handleMessage(message: ExtensionMessage): Promise<unknown>
         const chapter = await extractWeread();
         title = chapter.title;
         wordCount = chapter.text.length;
-        currentChunks = chunkText(chapter.text, message.chunkConfig);
+        const text = readingSettings.playback.skipReferences
+          ? chapter.text.split(/(?:\n|^)(?:References|Bibliography|Footnotes)\s*(?:\n|$)/i)[0]
+          : chapter.text;
+        currentChunks = chunkText(text, message.chunkConfig);
         currentTextMap = null;
+        currentInclude = null;
         currentExtraction = createExtractionCacheEntry({
           key: extractionKey,
           title,
@@ -172,6 +186,7 @@ export async function handleMessage(message: ExtensionMessage): Promise<unknown>
       } else {
         let blocks: TextBlock[];
         let textMap: TextMapResult;
+        let include: ((node: Text) => boolean) | null = null;
         if (fromSelection && selection) {
           textMap = buildTextNodeMap(document.body);
           blocks = collectBlocks(textMap, {
@@ -188,19 +203,18 @@ export async function handleMessage(message: ExtensionMessage): Promise<unknown>
           }
           title = result.title;
           textMap = result.textMap;
-          blocks = result.blocks;
+          blocks = skipReferences(result.blocks, readingSettings.playback.skipReferences);
+          include = result.include;
           sourceEl = result.sourceElement;
-          if (readingSettings.playback.skipReferences) {
-            const end = blocks.findIndex((b) => /^(?:References|Bibliography|Footnotes)$/i.test(b.text));
-            if (end >= 0) blocks = blocks.slice(0, end);
-          }
         }
         if (blocks.length === 0) {
           return { error: 'There is no visible text to read here.' };
         }
-        wordCount = countWords(blocks.map((b) => b.text).join('\n\n'));
+        currentSpokenText = spokenText(blocks);
+        wordCount = countWords(currentSpokenText);
         currentChunks = chunkBlocks(blocks, message.chunkConfig);
         currentTextMap = textMap;
+        currentInclude = include;
         currentExtraction = createExtractionCacheEntry({
           key: extractionKey,
           title,
@@ -388,9 +402,20 @@ function bodyTextOffset(container: Node, offset: number): number {
   return prefix.toString().length;
 }
 
-/** Whether every text node in the map is still on the page, unchanged. */
+/** Whether every text node in the map is still on the page with the same text. */
 function isTextMapIntact(map: TextMapResult): boolean {
   return map.entries.every(
-    (e) => e.node.isConnected && (e.node.nodeValue?.length ?? 0) === e.globalEnd - e.globalStart,
+    (e) => e.node.isConnected && e.node.nodeValue === map.text.slice(e.globalStart, e.globalEnd),
   );
+}
+
+/** Drop everything from a standalone References/Bibliography/Footnotes block on. */
+function skipReferences(blocks: TextBlock[], enabled: boolean): TextBlock[] {
+  if (!enabled) return blocks;
+  const end = blocks.findIndex((b) => /^(?:References|Bibliography|Footnotes)$/i.test(b.text));
+  return end >= 0 ? blocks.slice(0, end) : blocks;
+}
+
+function spokenText(blocks: TextBlock[]): string {
+  return blocks.map((b) => b.text).join('\n\n');
 }

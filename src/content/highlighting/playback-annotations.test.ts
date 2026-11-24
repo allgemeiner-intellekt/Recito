@@ -222,6 +222,8 @@ describe('playback annotations on page blocks', () => {
     expect(words('ir-word')).toEqual(['brown']);
     annotations.highlightWord(chunks[1], 'jumps.', 4);
     expect(words('ir-word')).toEqual(['jumps.']);
-    expect(words('ir-sentence')[0]).toMatch(/^The\s+quick.*jumps\.$/s);
+    // The sentence highlight skips the unspoken ad between "quick" and "brown".
+    const sentence = words('ir-sentence');
+    expect(sentence.map((t) => t.replace(/\s+/g, ' ').trim())).toEqual(['The quick', 'brown fox jumps.']);
   });
 });

@@ -128,14 +128,22 @@ function findArticleRoot(): Element | null {
   return null;
 }
 
+const MARKER = 'data-recito-';
+
 /**
- * Run Readability on a clone and map its verdict back onto live elements.
+ * Run Readability on a clone and map its verdict back onto live text nodes.
  *
- * Every clone element gets an attribute whose *name* is unique to it.
- * Readability keeps attributes on the nodes it keeps, and when it unwraps an
- * element it copies the wrapper's attributes onto the child; unique names
- * mean neither identity is overwritten. The live elements whose marker
- * survives are exactly the ones Readability judged to be content.
+ * Two identities link the clone to the live page, because Readability breaks
+ * each one in some case:
+ * - Text nodes. `cloneNode(true)` keeps text nodes in order, so a parallel
+ *   walk pairs each clone text node with its live original. Readability moves
+ *   text nodes even when it rebuilds the elements around them.
+ * - Element markers. Each clone element gets an attribute whose *name* is
+ *   unique to it. When Readability's first attempt finds too little it
+ *   re-parses the page from HTML, which recreates every text node but keeps
+ *   attributes. (Unique names matter because unwrapping copies a wrapper's
+ *   attributes onto its child.) A recreated text node is matched, by value and
+ *   in order, against the text of its nearest marked ancestor's live element.
  */
 function readabilityScope(): ContentScope | null {
   const live = document.getElementsByTagName('*');
@@ -144,41 +152,87 @@ function readabilityScope(): ContentScope | null {
   if (live.length !== cloned.length) return null;
   for (let i = 0; i < cloned.length; i++) cloned[i].setAttribute(`${MARKER}${i}`, '');
 
+  const liveOf = new Map<Node, Text>();
+  const liveWalker = document.createTreeWalker(document, NodeFilter.SHOW_TEXT);
+  const cloneWalker = clone.createTreeWalker(clone, NodeFilter.SHOW_TEXT);
+  for (
+    let original = liveWalker.nextNode(), copy = cloneWalker.nextNode();
+    original && copy;
+    original = liveWalker.nextNode(), copy = cloneWalker.nextNode()
+  ) {
+    liveOf.set(copy, original as Text);
+  }
+
   const article = new Readability<Element>(clone, { serializer: (node) => node as Element }).parse();
   if (!article?.textContent || wordCount(article.textContent) <= 30 || !article.content) return null;
 
-  const kept = new Set<Element>();
-  const collect = (el: Element) => {
-    for (const attr of el.attributes) {
-      if (attr.name.startsWith(MARKER)) {
-        const liveEl = live[Number(attr.name.slice(MARKER.length))];
-        if (liveEl) kept.add(liveEl);
-      }
-    }
-  };
-  collect(article.content);
-  for (const el of article.content.getElementsByTagName('*')) collect(el);
+  const kept = new Set<Text>();
+  const matcher = createTextMatcher(live);
+  const walker = clone.createTreeWalker(article.content, NodeFilter.SHOW_TEXT);
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    if (!node.nodeValue?.trim()) continue;
+    const original = liveOf.get(node) ?? matcher(node as Text);
+    if (original) kept.add(original);
+  }
   if (kept.size === 0) return null;
 
   return {
     title: article.title || document.title,
-    include: (node) => node.parentElement !== null && kept.has(node.parentElement),
+    include: (node) => kept.has(node),
     sourceElement: commonAncestor(kept),
   };
 }
 
-const MARKER = 'data-recito-';
+/**
+ * Find the live text node a recreated clone text node stands for: the next
+ * unmatched text node with the same value inside the live counterpart of its
+ * nearest marked ancestor.
+ */
+function createTextMatcher(live: HTMLCollectionOf<Element>): (node: Text) => Text | null {
+  const cursors = new Map<Element, { nodes: Text[]; next: number }>();
+  return (node) => {
+    const owner = markedOwner(node, live);
+    if (!owner) return null;
+    let cursor = cursors.get(owner);
+    if (!cursor) {
+      const nodes: Text[] = [];
+      const walker = document.createTreeWalker(owner, NodeFilter.SHOW_TEXT);
+      for (let n = walker.nextNode(); n; n = walker.nextNode()) nodes.push(n as Text);
+      cursor = { nodes, next: 0 };
+      cursors.set(owner, cursor);
+    }
+    for (let i = cursor.next; i < cursor.nodes.length; i++) {
+      if (cursor.nodes[i].nodeValue === node.nodeValue) {
+        cursor.next = i + 1;
+        return cursor.nodes[i];
+      }
+    }
+    return null;
+  };
+}
 
-/** Lowest common ancestor of a set of elements (first and last in document order suffice). */
-function commonAncestor(elements: Set<Element>): Element | null {
-  let first: Element | null = null;
-  let last: Element | null = null;
-  for (const el of elements) {
-    if (!first || first.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_PRECEDING) first = el;
-    if (!last || last.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING) last = el;
+/** Live element of the nearest marked ancestor (its own marker is the highest index). */
+function markedOwner(node: Node, live: HTMLCollectionOf<Element>): Element | null {
+  for (let el = node.parentElement; el; el = el.parentElement) {
+    let index = -1;
+    for (const attr of el.attributes) {
+      if (attr.name.startsWith(MARKER)) index = Math.max(index, Number(attr.name.slice(MARKER.length)));
+    }
+    if (index >= 0) return live[index] ?? null;
+  }
+  return null;
+}
+
+/** Lowest common ancestor element of a set of nodes (first and last in document order suffice). */
+function commonAncestor(nodes: Set<Node>): Element | null {
+  let first: Node | null = null;
+  let last: Node | null = null;
+  for (const node of nodes) {
+    if (!first || first.compareDocumentPosition(node) & Node.DOCUMENT_POSITION_PRECEDING) first = node;
+    if (!last || last.compareDocumentPosition(node) & Node.DOCUMENT_POSITION_FOLLOWING) last = node;
   }
   if (!first || !last) return null;
-  let ancestor: Element | null = first;
+  let ancestor: Element | null = first.parentElement;
   while (ancestor && !ancestor.contains(last)) ancestor = ancestor.parentElement;
   return ancestor;
 }

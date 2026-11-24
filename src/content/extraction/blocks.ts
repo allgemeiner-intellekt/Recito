@@ -20,11 +20,12 @@ export function collectBlocks(map: TextMapResult, options: CollectBlocksOptions 
   const { include, range } = options;
   const display = createDisplayCache();
   const rendered = createRenderedCache(display);
-  const brBefore = textNodesAfterLineBreaks(map);
+  const breaksBefore = lineBreaksBefore(map);
 
-  const raw: { block: Element; chars: string[]; offsets: number[] }[] = [];
+  const raw: { block: Element; heading: boolean; chars: string[]; offsets: number[] }[] = [];
   let lastEnd = -1;
   let lastBox: Element | null = null;
+  let lastLayout: Element | null = null;
 
   for (const entry of map.entries) {
     const parent = entry.node.parentElement;
@@ -43,20 +44,27 @@ export function collectBlocks(map: TextMapResult, options: CollectBlocksOptions 
       lastEnd = entry.globalEnd;
       continue;
     }
-    if (!rendered(parent)) continue;
+    // Text directly inside a closed <details> (outside its <summary>) is collapsed.
+    if (isClosedDetails(parent) || !rendered(parent)) continue;
 
-    const block = blockOf(parent, display);
+    // A heading is one block however its inside is laid out; elsewhere the
+    // nearest element that starts a new line is the block.
+    const layout = blockOf(parent, display);
+    const heading = parent.closest(HEADING_SELECTOR);
+    const block = heading ?? layout;
+    const breaks = breaksBefore.get(entry.node) ?? 0;
     let current = raw[raw.length - 1];
-    if (!current || current.block !== block) {
-      current = { block, chars: [], offsets: [] };
+    // Two or more <br> in a row end a paragraph, as a blank line does.
+    if (!current || current.block !== block || (breaks >= 2 && !heading)) {
+      current = { block, heading: heading !== null, chars: [], offsets: [] };
       raw.push(current);
     }
-    const box = inlineBoxOf(parent, block, display);
+    const box = inlineBoxOf(parent, layout, display);
     // Nothing visible separates these characters in the DOM, but a skipped
-    // node, a <br> or a separate inline box does on screen.
+    // node, a <br>, a separate inline box or a line box inside a heading does.
     if (
       current.chars.length > 0 &&
-      (entry.globalStart !== lastEnd || brBefore.has(entry.node) || box !== lastBox)
+      (entry.globalStart !== lastEnd || breaks > 0 || box !== lastBox || layout !== lastLayout)
     ) {
       current.chars.push(' ');
       current.offsets.push(entry.globalStart);
@@ -68,14 +76,15 @@ export function collectBlocks(map: TextMapResult, options: CollectBlocksOptions 
       current.offsets.push(offset);
     }
     lastBox = box;
+    lastLayout = layout;
     lastEnd = entry.globalEnd;
   }
 
   const blocks: TextBlock[] = [];
-  for (const { block, chars, offsets } of raw) {
+  for (const { heading, chars, offsets } of raw) {
     const normalized = normalizeWhitespace(chars, offsets);
     if (!normalized.text) continue;
-    blocks.push({ ...normalized, heading: block.closest(HEADING_SELECTOR) !== null });
+    blocks.push({ ...normalized, heading });
   }
   return blocks;
 }
@@ -134,49 +143,66 @@ function inlineBoxOf(el: Element, block: Element, display: (el: Element) => stri
   return null;
 }
 
-/**
- * Whether an element is painted. Collapsed <details> content and hidden
- * elements are skipped: the reader should hear what the user can see.
- */
-function createRenderedCache(display: (el: Element) => string): (el: Element) => boolean {
-  const cache = new Map<Element, boolean>();
-  const check = (el: Element): boolean => {
-    const cached = cache.get(el);
-    if (cached !== undefined) return cached;
-    let result: boolean;
-    const parent = el.parentElement;
-    const closedDetails =
-      parent?.tagName === 'DETAILS' && !(parent as HTMLDetailsElement).open && el.tagName !== 'SUMMARY';
-    if (display(el) === 'contents') {
-      // No box of its own, so checkVisibility() is always false even though
-      // its text renders. Judge by its own visibility and its parent's box.
-      result =
-        !closedDetails && getComputedStyle(el).visibility === 'visible' && (!parent || check(parent));
-    } else if (typeof el.checkVisibility === 'function') {
-      result = el.checkVisibility({ visibilityProperty: true });
-    } else {
-      // Fallback for environments without checkVisibility (tests, old Chrome).
-      result =
-        display(el) !== 'none' && !(el as HTMLElement).hidden && !closedDetails && (!parent || check(parent));
-    }
-    cache.set(el, result);
-    return result;
-  };
-  return check;
+/** An open-able <details> that is closed: only its <summary> is shown. */
+function isClosedDetails(el: Element): boolean {
+  return el.tagName === 'DETAILS' && !(el as HTMLDetailsElement).open;
 }
 
-function textNodesAfterLineBreaks(map: TextMapResult): Set<Text> {
-  const result = new Set<Text>();
+/**
+ * Whether an element's text is painted. Collapsed <details> content and
+ * hidden elements are skipped: the reader should hear what the user sees.
+ */
+function createRenderedCache(display: (el: Element) => string): (el: Element) => boolean {
+  const laidOutCache = new Map<Element, boolean>();
+  const paintedCache = new Map<Element, boolean>();
+
+  // Whether the element takes part in layout, ignoring `visibility`.
+  const laidOut = (el: Element): boolean => {
+    const cached = laidOutCache.get(el);
+    if (cached !== undefined) return cached;
+    const parent = el.parentElement;
+    let result: boolean;
+    if (parent && isClosedDetails(parent) && el.tagName !== 'SUMMARY') {
+      result = false;
+    } else if (display(el) === 'contents') {
+      // No box of its own, so checkVisibility() is always false for it even
+      // though its text renders: ask the nearest ancestor that has a box.
+      result = !parent || laidOut(parent);
+    } else if (typeof el.checkVisibility === 'function') {
+      result = el.checkVisibility();
+    } else {
+      // Fallback for environments without checkVisibility (tests, old Chrome).
+      result = display(el) !== 'none' && !(el as HTMLElement).hidden && (!parent || laidOut(parent));
+    }
+    laidOutCache.set(el, result);
+    return result;
+  };
+
+  return (el) => {
+    let result = paintedCache.get(el);
+    if (result === undefined) {
+      // Computed visibility is inherited and can be overridden by descendants,
+      // so the element's own value decides.
+      result = laidOut(el) && getComputedStyle(el).visibility === 'visible';
+      paintedCache.set(el, result);
+    }
+    return result;
+  };
+}
+
+/** How many <br> elements sit between each text node and the previous one. */
+function lineBreaksBefore(map: TextMapResult): Map<Text, number> {
+  const result = new Map<Text, number>();
   const root = map.entries[0]?.node.ownerDocument?.body;
   if (!root) return result;
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT);
-  let sawBreak = false;
+  let breaks = 0;
   for (let node = walker.nextNode(); node; node = walker.nextNode()) {
     if (node.nodeType === Node.ELEMENT_NODE) {
-      if ((node as Element).tagName === 'BR') sawBreak = true;
-    } else {
-      if (sawBreak) result.add(node as Text);
-      sawBreak = false;
+      if ((node as Element).tagName === 'BR') breaks++;
+    } else if ((node.nodeValue ?? '').trim()) {
+      if (breaks > 0) result.set(node as Text, breaks);
+      breaks = 0;
     }
   }
   return result;

@@ -78,19 +78,36 @@ export class HighlightManager {
    * Highlight a sentence by character offsets.
    */
   highlightSentence(charStart: number, charEnd: number): void {
+    this.highlightSentenceSpans([[charStart, charEnd]]);
+  }
+
+  /** Highlight a sentence made of several DOM spans (it skips unspoken content). */
+  highlightSentenceSpans(spans: [number, number][]): void {
     if (!this.textMap || !this.settings.sentenceEnabled) return;
 
     this.clearSentenceHighlight();
 
-    const range = createRangeFromOffsets(this.textMap.entries, charStart, charEnd);
-    if (!range) return;
+    const ranges = this.rangesFor(spans);
+    if (ranges.length === 0) return;
 
-    this.lastRange = range;
-    if (this.useNativeHighlight && this.sentenceHighlight) {
-      this.sentenceHighlight.add(range);
-    } else {
-      this.applyMarkFallback(range, 'ir-sentence-mark');
+    this.lastRange = ranges[0];
+    for (const range of ranges) {
+      if (this.useNativeHighlight && this.sentenceHighlight) {
+        this.sentenceHighlight.add(range);
+      } else {
+        this.applyMarkFallback(range, 'ir-sentence-mark');
+      }
     }
+  }
+
+  private rangesFor(spans: [number, number][]): Range[] {
+    if (!this.textMap) return [];
+    const ranges: Range[] = [];
+    for (const [start, end] of spans) {
+      const range = createRangeFromOffsets(this.textMap.entries, start, end);
+      if (range) ranges.push(range);
+    }
+    return ranges;
   }
 
   clearWordHighlight(): void {
@@ -112,18 +129,17 @@ export class HighlightManager {
   /**
    * Highlight a sentence/chunk for the scrub hover effect.
    */
-  highlightScrubHover(charStart: number, charEnd: number): void {
+  highlightScrubHover(spans: [number, number][]): void {
     if (!this.textMap) return;
 
     this.clearScrubHover();
 
-    const range = createRangeFromOffsets(this.textMap.entries, charStart, charEnd);
-    if (!range) return;
-
-    if (this.useNativeHighlight && this.scrubHoverHighlight) {
-      this.scrubHoverHighlight.add(range);
-    } else {
-      this.applyMarkFallback(range, 'ir-scrub-hover-mark');
+    for (const range of this.rangesFor(spans)) {
+      if (this.useNativeHighlight && this.scrubHoverHighlight) {
+        this.scrubHoverHighlight.add(range);
+      } else {
+        this.applyMarkFallback(range, 'ir-scrub-hover-mark');
+      }
     }
   }
 

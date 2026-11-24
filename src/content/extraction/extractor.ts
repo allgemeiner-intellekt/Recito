@@ -23,6 +23,7 @@ export function extractContent(): ExtractionResult | null {
     const textContent = blocks.map((b) => b.text).join('\n\n');
     return {
       title: scope.title,
+      include: scope.include,
       blocks,
       textMap,
       textContent,

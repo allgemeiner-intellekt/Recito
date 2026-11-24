@@ -66,6 +66,8 @@ export interface TextBlock {
 
 export interface ExtractionResult {
   title: string;
+  /** The content filter the blocks were collected with. */
+  include: (node: Text) => boolean;
   blocks: TextBlock[];
   /** Text map of document.body that block offsets refer to. */
   textMap: TextMapResult;
