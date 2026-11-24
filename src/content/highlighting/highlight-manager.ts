@@ -1,14 +1,23 @@
 import type { TextMapResult, TextNodeEntry, ResolvedHighlightSettings } from '@shared/types';
 import { buildTextNodeMap } from '../extraction/dom-mapper';
 import { createRangeFromOffsets } from './utils';
-import { injectHighlightStyles, updateHighlightStyles, removeHighlightStyles } from './styles';
+import {
+  injectHighlightStyles,
+  updateHighlightStyles,
+  removeHighlightStyles,
+  isDarkPage,
+  overlayColors,
+} from './styles';
+import { MarkerOverlay } from './marker-overlay';
 import { scrollToHighlight } from './auto-scroll';
 
 /**
  * Manages word and sentence highlighting on the page.
  *
- * Prefers the CSS Custom Highlight API (CSS.highlights) when available,
- * falling back to wrapping text in <mark> elements.
+ * The word marker and sentence band are painted by MarkerOverlay (rounded,
+ * gliding shapes). The CSS Custom Highlight API still holds the current ranges
+ * and natively paints the underline style and scrub hover; without it, those
+ * fall back to wrapping text in <mark> elements.
  */
 export class HighlightManager {
   private lastRange: Range | null = null;
@@ -20,6 +29,8 @@ export class HighlightManager {
   private settings: ResolvedHighlightSettings;
   private useNativeHighlight: boolean;
   private markElements: HTMLElement[] = [];
+  private overlay: MarkerOverlay | null = null;
+  private darkPage = false;
 
   constructor(settings: ResolvedHighlightSettings) {
     this.settings = settings;
@@ -33,6 +44,9 @@ export class HighlightManager {
   init(sourceElement: Element, textMap?: TextMapResult): void {
     this.textMap = textMap ?? buildTextNodeMap(sourceElement);
     this.styleEl = injectHighlightStyles(this.settings);
+    this.darkPage = isDarkPage();
+    this.overlay = new MarkerOverlay(this.darkPage);
+    this.applyOverlayColors();
 
     if (this.useNativeHighlight) {
       this.wordHighlight = new Highlight();
@@ -58,16 +72,22 @@ export class HighlightManager {
       return;
     }
 
-    this.clearWordHighlight();
+    // Keep the overlay marker in place so it glides to the new word.
+    this.clearNativeWord();
 
     const range = createRangeFromOffsets(this.textMap.entries, charStart, charEnd);
-    if (!range) return;
+    if (!range) {
+      this.overlay?.setWord(null);
+      return;
+    }
 
+    const underline = this.settings.style === 'underline';
     if (this.useNativeHighlight && this.wordHighlight) {
       this.wordHighlight.add(range);
-    } else {
+    } else if (underline) {
       this.applyMarkFallback(range, 'ir-word-mark');
     }
+    this.overlay?.setWord(underline ? null : range);
 
     if (this.settings.autoScroll) {
       scrollToHighlight(range);
@@ -91,13 +111,8 @@ export class HighlightManager {
     if (ranges.length === 0) return;
 
     this.lastRange = ranges[0];
-    for (const range of ranges) {
-      if (this.useNativeHighlight && this.sentenceHighlight) {
-        this.sentenceHighlight.add(range);
-      } else {
-        this.applyMarkFallback(range, 'ir-sentence-mark');
-      }
-    }
+    for (const range of ranges) this.sentenceHighlight?.add(range);
+    this.overlay?.setSentence(ranges);
   }
 
   private rangesFor(spans: [number, number][]): Range[] {
@@ -111,6 +126,11 @@ export class HighlightManager {
   }
 
   clearWordHighlight(): void {
+    this.clearNativeWord();
+    this.overlay?.setWord(null);
+  }
+
+  private clearNativeWord(): void {
     if (this.useNativeHighlight && this.wordHighlight) {
       this.wordHighlight.clear();
     } else {
@@ -119,11 +139,8 @@ export class HighlightManager {
   }
 
   clearSentenceHighlight(): void {
-    if (this.useNativeHighlight && this.sentenceHighlight) {
-      this.sentenceHighlight.clear();
-    } else {
-      this.removeMarksByClass('ir-sentence-mark');
-    }
+    this.sentenceHighlight?.clear();
+    this.overlay?.setSentence([]);
   }
 
   /**
@@ -207,6 +224,12 @@ export class HighlightManager {
     if (this.styleEl) {
       updateHighlightStyles(this.styleEl, settings);
     }
+    this.applyOverlayColors();
+  }
+
+  private applyOverlayColors(): void {
+    const colors = overlayColors(this.settings, this.darkPage);
+    this.overlay?.setColors(colors.word, colors.sentence);
   }
 
   destroy(): void {
@@ -222,6 +245,8 @@ export class HighlightManager {
     this.sentenceHighlight = null;
     this.scrubHoverHighlight = null;
     this.textMap = null;
+    this.overlay?.destroy();
+    this.overlay = null;
 
     if (this.styleEl) {
       removeHighlightStyles(this.styleEl);

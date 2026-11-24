@@ -1230,11 +1230,17 @@ input[type='range'] {
 }
 .preview .s {
   background: var(--rc-sent);
+  border-radius: 5px;
+  padding: 1px 3px;
+  margin: 0 -3px;
   box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
 }
 .preview .w {
   background: var(--rc-word);
-  border-radius: 2px;
+  border-radius: 6px;
+  padding: 1px 3px;
+  margin: 0 -3px;
 }
 html.hl-underline .preview .w {
   background: none;
