@@ -35,31 +35,34 @@ export function removeHighlightStyles(styleEl: HTMLStyleElement): void {
   styleEl.remove();
 }
 
-function buildCSS(settings: ResolvedHighlightSettings): string {
-  const underline = settings.style === 'underline';
+/** Whether the page has light text, so the marker overlay must lighten instead of darken. */
+export function isDarkPage(): boolean {
   const rgb = getComputedStyle(document.body).color.match(/\d+/g)?.map(Number);
-  const darkPage = rgb && rgb[0] * 0.2126 + rgb[1] * 0.7152 + rgb[2] * 0.0722 > 160;
-  const wordBackground = underline
-    ? 'transparent'
-    : darkPage
-      ? settings.wordColor.replace(/0\.7\)$/, '1)')
-      : settings.wordColor;
-  const sentenceBackground =
-    settings.style === 'sentence'
-      ? settings.sentenceColor.replace(/0\.2\)$/, '0.34)')
-      : settings.sentenceColor;
-  const wordText = darkPage && !underline ? '#1e1b17' : 'inherit';
-
-  return `
-/* CSS Custom Highlight API styles */
-::highlight(ir-word) {
-  color: ${wordText};
-  background-color: ${wordBackground};
-  text-decoration: ${underline ? `underline solid ${settings.wordColor}` : 'none'};
-  text-decoration-thickness: 3px;
+  return !!rgb && rgb[0] * 0.2126 + rgb[1] * 0.7152 + rgb[2] * 0.0722 > 160;
 }
-::highlight(ir-sentence) {
-  background-color: ${sentenceBackground};
+
+/** Fills for the marker overlay, tuned for its multiply (light) or screen (dark) blending. */
+export function overlayColors(
+  settings: ResolvedHighlightSettings,
+  darkPage: boolean,
+): { word: string; sentence: string } {
+  const sentenceAlpha =
+    settings.style === 'sentence' ? (darkPage ? '0.36' : '0.34') : darkPage ? '0.24' : '0.2';
+  return {
+    word: darkPage ? settings.wordColor.replace(/0\.7\)$/, '0.55)') : settings.wordColor,
+    sentence: settings.sentenceColor.replace(/0\.2\)$/, `${sentenceAlpha})`),
+  };
+}
+
+// The word marker and sentence band are painted by MarkerOverlay; the
+// ir-word/ir-sentence highlights only hold their ranges, except that the
+// underline style still decorates the word natively.
+function buildCSS(settings: ResolvedHighlightSettings): string {
+  const underline = `underline solid ${settings.wordColor}`;
+  return `
+::highlight(ir-word) {
+  text-decoration: ${settings.style === 'underline' ? underline : 'none'};
+  text-decoration-thickness: 3px;
 }
 
 /* Scrub hover (interactive text navigation) */
@@ -70,23 +73,14 @@ function buildCSS(settings: ResolvedHighlightSettings): string {
 /* Cursor when hovering over scrubbable text */
 html.ir-scrub-active { cursor: pointer; }
 
-/* Fallback mark element styles */
+/* Fallback mark element styles (no CSS Custom Highlight API) */
 mark.ir-word-mark {
-  background-color: ${wordBackground};
-  color: ${wordText};
-  padding: 0 1px;
-  margin: 0;
-  border-radius: 3px;
-  text-decoration: ${underline ? `underline solid ${settings.wordColor}` : 'none'};
-  text-decoration-thickness: 3px;
-  transition: background-color 0.15s ease;
-}
-mark.ir-sentence-mark {
-  background-color: ${sentenceBackground};
+  background-color: transparent;
   color: inherit;
   padding: 0;
   margin: 0;
-  border-radius: 3px;
+  text-decoration: ${underline};
+  text-decoration-thickness: 3px;
 }
 mark.ir-scrub-hover-mark {
   background-color: rgba(0, 0, 0, 0.06);
