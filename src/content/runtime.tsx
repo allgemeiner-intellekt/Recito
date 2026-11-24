@@ -402,10 +402,16 @@ function bodyTextOffset(container: Node, offset: number): number {
   return prefix.toString().length;
 }
 
-/** Whether every text node in the map is still on the page with the same text. */
+/** Whether the live body still has the same text nodes, in the same order. */
 function isTextMapIntact(map: TextMapResult): boolean {
-  return map.entries.every(
-    (e) => e.node.isConnected && e.node.nodeValue === map.text.slice(e.globalStart, e.globalEnd),
+  const live = buildTextNodeMap(document.body);
+  return (
+    live.text === map.text &&
+    live.entries.length === map.entries.length &&
+    live.entries.every((entry, index) => {
+      const cached = map.entries[index];
+      return entry.node === cached.node && entry.globalEnd === cached.globalEnd;
+    })
   );
 }
 

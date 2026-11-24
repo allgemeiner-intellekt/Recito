@@ -141,7 +141,7 @@ it('refreshes cached page text when skipping references is enabled or disabled',
   await handleMessage({ type: MSG.STOP });
 });
 
-it('re-extracts on replay when hidden content opens or text changes', async () => {
+it('re-extracts on replay when visibility, text, or DOM order changes', async () => {
   document.body.innerHTML =
     '<article><p>Main summer text.</p><details><summary>Appendix</summary><p>Hidden detail.</p></details></article>';
   window.getSelection()?.removeAllRanges();
@@ -183,5 +183,9 @@ it('re-extracts on replay when hidden content opens or text changes', async () =
   document.querySelector('details')!.open = true;
   expect(await read()).toEqual({ text: 'Main summer text. Appendix Hidden detail.', reused: false });
   document.querySelector('p')!.firstChild!.nodeValue = 'Main winter text.';
-  expect((await read()).text).toContain('winter');
+  expect(await read()).toEqual({ text: 'Main winter text. Appendix Hidden detail.', reused: false });
+  const article = document.querySelector('article')!;
+  article.prepend(article.lastElementChild!);
+  expect(await read()).toEqual({ text: 'Appendix Hidden detail. Main winter text.', reused: false });
+  expect(await read()).toEqual({ text: 'Appendix Hidden detail. Main winter text.', reused: true });
 });
