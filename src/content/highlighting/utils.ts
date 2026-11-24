@@ -1,4 +1,4 @@
-import type { TextNodeEntry } from '@shared/types';
+import type { TextChunk, TextNodeEntry } from '@shared/types';
 
 /**
  * Create a DOM Range spanning the text between `startOffset` and `endOffset`
@@ -38,4 +38,37 @@ export function createRangeFromOffsets(
   } catch {
     return null;
   }
+}
+
+/**
+ * DOM spans covering `chunk.text[start, end)`. A span breaks wherever page
+ * text that is not spoken (a skipped button, ad or hidden note) lies between
+ * two characters, so highlights never paint over it. Collapsed whitespace
+ * does not break a span.
+ */
+export function chunkSpans(
+  chunk: TextChunk,
+  fullText: string,
+  start = 0,
+  end = chunk.text.length,
+): [number, number][] {
+  const offsets = chunk.domOffsets;
+  if (!offsets || offsets.length === 0) {
+    return [[chunk.startOffset + start, chunk.startOffset + end]];
+  }
+  const from = Math.max(0, Math.min(start, offsets.length - 1));
+  const to = Math.max(from + 1, Math.min(end, offsets.length));
+  const spans: [number, number][] = [];
+  let spanStart = offsets[from];
+  let previous = offsets[from];
+  for (let i = from + 1; i < to; i++) {
+    const offset = offsets[i];
+    if (offset > previous + 1 && /\S/.test(fullText.slice(previous + 1, offset))) {
+      spans.push([spanStart, previous + 1]);
+      spanStart = offset;
+    }
+    previous = Math.max(previous, offset);
+  }
+  spans.push([spanStart, previous + 1]);
+  return spans;
 }

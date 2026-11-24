@@ -1,5 +1,5 @@
 import { MSG, type ExtensionMessage } from '@shared/messages';
-import type { TextChunk } from '@shared/types';
+import type { TextBlock, TextChunk, TextMapResult } from '@shared/types';
 import { extractContent } from './extraction/extractor';
 import { getSelectedText } from './extraction/selection';
 import {
@@ -8,7 +8,10 @@ import {
   createExtractionCacheKey,
   type ExtractionCacheEntry,
 } from './extraction/session-cache';
-import { chunkText } from '@shared/chunker';
+import { chunkBlocks, chunkText } from '@shared/chunker';
+import { collectBlocks } from './extraction/blocks';
+import { buildTextNodeMap } from './extraction/dom-mapper';
+import { wordCount as countWords } from './extraction/generic';
 import { mountToolbar } from './mount';
 import { useToolbarStore } from './state/store';
 import { getSettings, getProgress } from '@shared/storage';
@@ -63,6 +66,11 @@ function cleanupNativeMediaDetection(): void {
 
 // Module-level storage for extracted chunks
 let currentChunks: TextChunk[] = [];
+/** Text map of document.body that page/selection chunk offsets refer to. */
+let currentTextMap: TextMapResult | null = null;
+/** Content filter and spoken text of the cached page extraction, to detect page changes. */
+let currentInclude: ((node: Text) => boolean) | null = null;
+let currentSpokenText = '';
 let selectionScope = false;
 let currentExtraction: ExtractionCacheEntry | null = null;
 
@@ -119,17 +127,22 @@ export async function handleMessage(message: ExtensionMessage): Promise<unknown>
         !fromSelection &&
         !isWeread() &&
         canReuseExtraction(currentExtraction, extractionKey) &&
-        currentChunks.length === currentExtraction?.totalChunks
+        currentChunks.length === currentExtraction?.totalChunks &&
+        currentTextMap &&
+        currentInclude &&
+        isTextMapIntact(currentTextMap) &&
+        spokenText(
+          skipReferences(
+            collectBlocks(currentTextMap, { include: currentInclude }),
+            readingSettings.playback.skipReferences,
+          ),
+        ) === currentSpokenText
       ) {
         store._setTotalChunks(currentChunks.length);
         store.showToolbar();
 
         if (!annotations) {
-          await initializePlaybackAnnotations(
-            selectionScope
-              ? document.body
-              : ((currentExtraction.sourceElement as Element | null) ?? document.body),
-          );
+          await initializePlaybackAnnotations(document.body, currentTextMap);
         }
 
         return {
@@ -146,70 +159,72 @@ export async function handleMessage(message: ExtensionMessage): Promise<unknown>
         };
       }
 
-      let textContent: string;
       let title: string;
       let wordCount: number;
       let sourceEl: Element | null = null;
-      let wereadChapter: WereadChapter | null = null;
 
       if (isWeread()) {
-        wereadChapter = await extractWeread();
-        textContent = wereadChapter.text;
-        title = wereadChapter.title;
-        wordCount = textContent.length;
-        sourceEl = wereadChapter.root;
-      } else if (fromSelection && selection) {
-        textContent = selection.text;
-        title = document.title;
-        wordCount = textContent.split(/\s+/).filter(Boolean).length;
+        const chapter = await extractWeread();
+        title = chapter.title;
+        wordCount = chapter.text.length;
+        const text = readingSettings.playback.skipReferences
+          ? chapter.text.split(/(?:\n|^)(?:References|Bibliography|Footnotes)\s*(?:\n|$)/i)[0]
+          : chapter.text;
+        currentChunks = chunkText(text, message.chunkConfig);
+        currentTextMap = null;
+        currentInclude = null;
+        currentExtraction = createExtractionCacheEntry({
+          key: extractionKey,
+          title,
+          wordCount,
+          totalChunks: currentChunks.length,
+          sourceElement: chapter.root,
+        });
+        store._setTotalChunks(currentChunks.length);
+        store.showToolbar();
+        await initializePlaybackAnnotations(chapter);
       } else {
-        const result = extractContent();
-        if (!result) {
-          return { error: 'Could not extract content from this page.' };
-        }
-        textContent = result.textContent;
-        title = result.title;
-        wordCount = result.wordCount;
-        sourceEl = result.sourceElement;
-      }
-
-      if (!fromSelection && readingSettings.playback.skipReferences) {
-        textContent = textContent.split(
-          /(?:\n|^)(?:References|Bibliography|Footnotes)\s*(?:\n|$)/i,
-        )[0];
-        wordCount = textContent.split(/\s+/).filter(Boolean).length;
-      }
-      currentChunks = chunkText(textContent, message.chunkConfig);
-      currentExtraction = createExtractionCacheEntry({
-        key: extractionKey,
-        title,
-        wordCount,
-        totalChunks: currentChunks.length,
-        sourceElement: sourceEl,
-      });
-
-      store._setTotalChunks(currentChunks.length);
-      store.showToolbar();
-
-      await initializePlaybackAnnotations(
-        wereadChapter ??
-          (message.startOffset !== undefined ? document.body : sourceEl) ??
-          document.body,
-      );
-
-      // Recompute chunk offsets against the DOM text map so highlighting
-      // aligns with actual text node positions (Readability's textContent
-      // may differ from the live DOM, causing partial-word highlights).
-      const domText = annotations?.getFullText() ?? '';
-      if (domText) {
-        let selectionStart = 0;
+        let blocks: TextBlock[];
+        let textMap: TextMapResult;
+        let include: ((node: Text) => boolean) | null = null;
         if (fromSelection && selection) {
-          const prefix = document.createRange();
-          prefix.selectNodeContents(document.body);
-          prefix.setEnd(selection.range.startContainer, selection.range.startOffset);
-          selectionStart = prefix.toString().length;
+          textMap = buildTextNodeMap(document.body);
+          blocks = collectBlocks(textMap, {
+            range: {
+              start: bodyTextOffset(selection.range.startContainer, selection.range.startOffset),
+              end: bodyTextOffset(selection.range.endContainer, selection.range.endOffset),
+            },
+          });
+          title = document.title;
+        } else {
+          const result = extractContent();
+          if (!result) {
+            return { error: 'Could not extract content from this page.' };
+          }
+          title = result.title;
+          textMap = result.textMap;
+          blocks = skipReferences(result.blocks, readingSettings.playback.skipReferences);
+          include = result.include;
+          sourceEl = result.sourceElement;
         }
-        recomputeChunkOffsets(currentChunks, domText, selectionStart);
+        if (blocks.length === 0) {
+          return { error: 'There is no visible text to read here.' };
+        }
+        currentSpokenText = spokenText(blocks);
+        wordCount = countWords(currentSpokenText);
+        currentChunks = chunkBlocks(blocks, message.chunkConfig);
+        currentTextMap = textMap;
+        currentInclude = include;
+        currentExtraction = createExtractionCacheEntry({
+          key: extractionKey,
+          title,
+          wordCount,
+          totalChunks: currentChunks.length,
+          sourceElement: sourceEl,
+        });
+        store._setTotalChunks(currentChunks.length);
+        store.showToolbar();
+        await initializePlaybackAnnotations(document.body, textMap);
       }
 
       return {
@@ -222,8 +237,9 @@ export async function handleMessage(message: ExtensionMessage): Promise<unknown>
         startChunk:
           message.startOffset === undefined
             ? undefined
-            : currentChunks.findIndex(
-                (c) => message.startOffset! >= c.startOffset && message.startOffset! < c.endOffset,
+            : Math.max(
+                0,
+                currentChunks.findIndex((c) => c.endOffset > message.startOffset!),
               ),
       };
     }
@@ -233,7 +249,9 @@ export async function handleMessage(message: ExtensionMessage): Promise<unknown>
       if (!chunk) {
         return { error: `Chunk ${message.index} not found` };
       }
-      return chunk;
+      // DOM offsets only matter for highlighting in this tab.
+      const { index, text, startOffset, endOffset, wordCount } = chunk;
+      return { index, text, startOffset, endOffset, wordCount };
     }
 
     case MSG.GET_PAGE_INFO: {
@@ -347,7 +365,10 @@ function destroyPlaybackAnnotations(): void {
   annotations = null;
 }
 
-async function initializePlaybackAnnotations(source: Element | WereadChapter): Promise<void> {
+async function initializePlaybackAnnotations(
+  source: Element | WereadChapter,
+  textMap?: TextMapResult,
+): Promise<void> {
   const settings = await getSettings();
   const resolvedHighlight = {
     ...resolveHighlightSettings(settings.highlight, settings.themeColor),
@@ -370,53 +391,37 @@ async function initializePlaybackAnnotations(source: Element | WereadChapter): P
       useToolbarStore.getState().stop();
       useToolbarStore.getState()._showToast('章节或排版已变化，请重新启动朗读。');
     },
-  });
+  }, textMap);
 }
 
-/**
- * Recompute chunk startOffset/endOffset so they refer to positions in `domText`
- * (the concatenated DOM text node map) rather than Readability's textContent.
- * Uses fuzzy matching: for each chunk, search for its text (or a normalised
- * version) in the DOM text near the expected position.
- */
-function recomputeChunkOffsets(chunks: TextChunk[], domText: string, start = 0): void {
-  let searchFrom = start;
-
-  for (const chunk of chunks) {
-    // Try exact match first
-    let idx = domText.indexOf(chunk.text, searchFrom);
-
-    if (idx < 0) {
-      // Normalise whitespace and try again (DOM text nodes may have different
-      // whitespace than Readability output)
-      const normChunk = chunk.text.replace(/\s+/g, ' ').trim();
-      // Build a regex that matches the chunk words with flexible whitespace
-      const words = normChunk.split(' ');
-      const pattern = words.map((w) => escapeRegExp(w)).join('\\s+');
-      const re = new RegExp(pattern);
-      const sub = domText.slice(searchFrom);
-      const m = re.exec(sub);
-      if (m) {
-        idx = searchFrom + m.index;
-        // Use the matched length (may differ from chunk.text.length due to whitespace)
-        chunk.startOffset = idx;
-        chunk.endOffset = idx + m[0].length;
-        searchFrom = chunk.endOffset;
-        continue;
-      }
-    }
-
-    if (idx >= 0) {
-      chunk.startOffset = idx;
-      chunk.endOffset = idx + chunk.text.length;
-      searchFrom = chunk.endOffset;
-    } else {
-      console.warn('[content] Could not locate chunk in DOM text:', chunk.text.slice(0, 50));
-    }
-    // If neither match works, keep the original offsets as a last resort
-  }
+/** Global offset of a DOM position in the text map of document.body. */
+function bodyTextOffset(container: Node, offset: number): number {
+  const prefix = document.createRange();
+  prefix.selectNodeContents(document.body);
+  prefix.setEnd(container, offset);
+  return prefix.toString().length;
 }
 
-function escapeRegExp(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+/** Whether the live body still has the same text nodes, in the same order. */
+function isTextMapIntact(map: TextMapResult): boolean {
+  const live = buildTextNodeMap(document.body);
+  return (
+    live.text === map.text &&
+    live.entries.length === map.entries.length &&
+    live.entries.every((entry, index) => {
+      const cached = map.entries[index];
+      return entry.node === cached.node && entry.globalEnd === cached.globalEnd;
+    })
+  );
+}
+
+/** Drop everything from a standalone References/Bibliography/Footnotes block on. */
+function skipReferences(blocks: TextBlock[], enabled: boolean): TextBlock[] {
+  if (!enabled) return blocks;
+  const end = blocks.findIndex((b) => /^(?:References|Bibliography|Footnotes)$/i.test(b.text));
+  return end >= 0 ? blocks.slice(0, end) : blocks;
+}
+
+function spokenText(blocks: TextBlock[]): string {
+  return blocks.map((b) => b.text).join('\n\n');
 }

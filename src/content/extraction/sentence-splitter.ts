@@ -4,7 +4,7 @@ import type { SentenceBoundary } from '@shared/types';
 const ABBREVIATIONS = new Set([
   'mr', 'mrs', 'ms', 'dr', 'prof', 'sr', 'jr', 'st', 'ave', 'blvd',
   'gen', 'gov', 'sgt', 'cpl', 'pvt', 'capt', 'lt', 'col', 'maj',
-  'cmdr', 'adm', 'rev', 'hon', 'pres',
+  'cmdr', 'adm', 'rev', 'hon', 'pres', 'rep', 'reps', 'sen', 'sens',
   'dept', 'univ', 'assn', 'bros', 'inc', 'ltd', 'co', 'corp',
   'jan', 'feb', 'mar', 'apr', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec',
   'mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun',
@@ -21,8 +21,8 @@ function isAbbreviation(word: string): boolean {
   if (ABBREVIATIONS.has(base)) return true;
   if (MULTI_DOT_ABBREV.test(word.replace(/\.$/, ''))) return true;
 
-  // Single uppercase letter followed by period (initials like "J.")
-  if (/^[A-Z]$/.test(base)) return true;
+  // Single uppercase letter followed by period (initials like "J.", "U.")
+  if (/^[A-Z]$/.test(word.replace(/\.$/, ''))) return true;
 
   return false;
 }

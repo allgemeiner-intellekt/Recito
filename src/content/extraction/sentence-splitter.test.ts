@@ -17,6 +17,17 @@ describe('splitSentenceStrings', () => {
     ]);
   });
 
+  it('keeps initials and political titles inside the sentence', () => {
+    expect(splitSentenceStrings('U.S. Rep. Jimmy Gomez resigned. He was elected in 2017.')).toEqual([
+      'U.S. Rep. Jimmy Gomez resigned.',
+      'He was elected in 2017.',
+    ]);
+    expect(splitSentenceStrings('The paper by Franklin S. Cooper mattered. It still does.')).toEqual([
+      'The paper by Franklin S. Cooper mattered.',
+      'It still does.',
+    ]);
+  });
+
   it('handles decimals', () => {
     expect(splitSentenceStrings('The price is 3.14 dollars. That is cheap.')).toEqual([
       'The price is 3.14 dollars.',

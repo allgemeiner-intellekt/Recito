@@ -46,9 +46,31 @@ export interface SynthesisOptions {
 
 // === Content Extraction Types ===
 
+/** Where a site extractor found the readable content on the live page. */
+export interface ContentScope {
+  title: string;
+  /** Whether a live text node belongs to the readable content. */
+  include: (node: Text) => boolean;
+  /** Element containing all of the content; a cheap change detector for caching. */
+  sourceElement: Element | null;
+}
+
+/** One visual block (heading, paragraph, list item...) of readable text. */
+export interface TextBlock {
+  /** Whitespace-normalised text, as it will be spoken. */
+  text: string;
+  /** Global DOM text-map offset of every character in `text`. */
+  offsets: number[];
+  heading: boolean;
+}
+
 export interface ExtractionResult {
   title: string;
-  html: string;
+  /** The content filter the blocks were collected with. */
+  include: (node: Text) => boolean;
+  blocks: TextBlock[];
+  /** Text map of document.body that block offsets refer to. */
+  textMap: TextMapResult;
   textContent: string;
   wordCount: number;
   sourceElement: Element | null;
@@ -60,6 +82,11 @@ export interface TextChunk {
   startOffset: number;
   endOffset: number;
   wordCount: number;
+  /**
+   * Content-script only: DOM offset of every character in `text`. Absent when
+   * `text` is a verbatim slice starting at `startOffset` (WeRead).
+   */
+  domOffsets?: number[];
 }
 
 export interface TextNodeEntry {

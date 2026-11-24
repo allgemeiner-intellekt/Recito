@@ -4,17 +4,27 @@ import { MSG } from '@shared/messages';
 import { DEFAULT_SETTINGS } from '@shared/constants';
 
 vi.mock('./mount', () => ({ mountToolbar: vi.fn() }));
-vi.mock('./extraction/extractor', () => ({
-  extractContent: () => {
-    const article = document.querySelector('article')!;
-    return {
-      title: 'Private title',
-      textContent: article.textContent!,
-      wordCount: article.textContent!.split(/\s+/).filter(Boolean).length,
-      sourceElement: article,
-    };
-  },
-}));
+vi.mock('./extraction/extractor', async () => {
+  const { buildTextNodeMap } = await import('./extraction/dom-mapper');
+  const { collectBlocks } = await import('./extraction/blocks');
+  return {
+    extractContent: () => {
+      const article = document.querySelector('article')!;
+      const textMap = buildTextNodeMap(document.body);
+      const blocks = collectBlocks(textMap, { include: (node) => article.contains(node) });
+      const textContent = blocks.map((b) => b.text).join('\n\n');
+      return {
+        title: 'Private title',
+        include: (node: Text) => article.contains(node),
+        blocks,
+        textMap,
+        textContent,
+        wordCount: textContent.split(/\s+/).filter(Boolean).length,
+        sourceElement: article,
+      };
+    },
+  };
+});
 afterEach(() => {
   vi.unstubAllGlobals();
 });
@@ -82,7 +92,8 @@ it('seeks inside a selection and switches to page scope at the clicked text outs
 });
 
 it('refreshes cached page text when skipping references is enabled or disabled', async () => {
-  document.body.innerHTML = '<article><p>Main words.\nReferences\nReference words.</p></article>';
+  document.body.innerHTML =
+    '<article><p>Main words.</p><h2>References</h2><p>Reference words.</p></article>';
   window.getSelection()?.removeAllRanges();
   vi.stubGlobal('CSS', { highlights: new Map() });
   vi.stubGlobal(
@@ -128,4 +139,53 @@ it('refreshes cached page text when skipping references is enabled or disabled',
   skip = false;
   expect(await read()).toContain('Reference words');
   await handleMessage({ type: MSG.STOP });
+});
+
+it('re-extracts on replay when visibility, text, or DOM order changes', async () => {
+  document.body.innerHTML =
+    '<article><p>Main summer text.</p><details><summary>Appendix</summary><p>Hidden detail.</p></details></article>';
+  window.getSelection()?.removeAllRanges();
+  vi.stubGlobal('CSS', { highlights: new Map() });
+  vi.stubGlobal(
+    'Highlight',
+    class extends Set<Range> {
+      priority = 0;
+    },
+  );
+  vi.stubGlobal('chrome', {
+    storage: {
+      local: {
+        get: vi.fn(async (key: string) => ({
+          [key]: key === 'ir-settings' ? DEFAULT_SETTINGS : undefined,
+        })),
+        set: vi.fn().mockResolvedValue(undefined),
+      },
+      onChanged: { addListener: vi.fn(), removeListener: vi.fn() },
+    },
+    runtime: { sendMessage: vi.fn().mockResolvedValue({ ok: true }) },
+  });
+  const { handleMessage } = await import('./runtime');
+  const read = async () => {
+    const response = (await handleMessage({ type: MSG.EXTRACT_CONTENT, fromSelection: false })) as {
+      totalChunks: number;
+      reused?: boolean;
+    };
+    const chunks = [];
+    for (let i = 0; i < response.totalChunks; i++)
+      chunks.push(
+        ((await handleMessage({ type: MSG.GET_CHUNK, index: i })) as { text: string }).text,
+      );
+    await handleMessage({ type: MSG.STOP });
+    return { text: chunks.join(' '), reused: response.reused === true };
+  };
+  expect(await read()).toEqual({ text: 'Main summer text. Appendix', reused: false });
+  expect(await read()).toEqual({ text: 'Main summer text. Appendix', reused: true });
+  document.querySelector('details')!.open = true;
+  expect(await read()).toEqual({ text: 'Main summer text. Appendix Hidden detail.', reused: false });
+  document.querySelector('p')!.firstChild!.nodeValue = 'Main winter text.';
+  expect(await read()).toEqual({ text: 'Main winter text. Appendix Hidden detail.', reused: false });
+  const article = document.querySelector('article')!;
+  article.prepend(article.lastElementChild!);
+  expect(await read()).toEqual({ text: 'Appendix Hidden detail. Main winter text.', reused: false });
+  expect(await read()).toEqual({ text: 'Appendix Hidden detail. Main winter text.', reused: true });
 });

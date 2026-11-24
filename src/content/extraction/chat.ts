@@ -1,4 +1,4 @@
-import type { ExtractionResult } from '@shared/types';
+import type { ContentScope } from '@shared/types';
 
 /**
  * Site-specific extraction for AI chat pages (Claude, ChatGPT, Gemini, etc.).
@@ -148,7 +148,7 @@ function lowestCommonAncestor(nodes: Element[]): Element | null {
   return ancestor;
 }
 
-export function extractChat(): ExtractionResult | null {
+export function extractChat(): ContentScope | null {
   const site = findMatchedSite();
   const selectors = site?.selectors ?? GENERIC_CHAT_SELECTORS;
 
@@ -163,14 +163,18 @@ export function extractChat(): ExtractionResult | null {
 
   const textContent = (container as HTMLElement).innerText?.trim() ?? '';
   if (!textContent) return null;
-  const words = wordCount(textContent);
-  if (words < 5) return null;
+  if (wordCount(textContent) < 5) return null;
 
+  // Read only the messages, not the composer or toolbars around them.
+  const messageSet = new Set<Element>(messages);
   return {
     title: document.title,
-    html: (container as HTMLElement).innerHTML,
-    textContent,
-    wordCount: words,
+    include: (node) => {
+      for (let el = node.parentElement; el && el !== container.parentElement; el = el.parentElement) {
+        if (messageSet.has(el)) return true;
+      }
+      return false;
+    },
     sourceElement: container,
   };
 }
