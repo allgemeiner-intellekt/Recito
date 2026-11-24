@@ -63,6 +63,19 @@ it('glides between words on a line and jumps to a new line', () => {
   expect(word.style.opacity).toBe('0');
 });
 
+it('paints every line of a word that wraps', () => {
+  document.body.innerHTML = '<p>one two three four</p>';
+  fakeLayout(10);
+  overlay = new MarkerOverlay(false);
+  const word = shadow().querySelector<HTMLElement>('.word')!;
+  overlay.setWord(range(8, 13));
+  expect(word.style.transform).toBe('translate(77px, -1px)');
+  const parts = shadow().querySelectorAll<HTMLElement>('.part');
+  expect([...parts].map((p) => p.style.transform)).toEqual(['translate(-3px, 19px)']);
+  overlay.setWord(range(14, 18));
+  expect(shadow().querySelectorAll('.part')).toHaveLength(0);
+});
+
 it('draws one rounded band per line of the sentence', () => {
   document.body.innerHTML = '<p>one two three four</p>';
   fakeLayout(10);

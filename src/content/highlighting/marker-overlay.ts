@@ -24,6 +24,8 @@ export class MarkerOverlay {
   private root: ShadowRoot;
   private sentenceLayer = document.createElement('div');
   private word = document.createElement('div');
+  /** Continuation fragments of a word that wraps onto further lines. */
+  private wordRest = document.createElement('div');
   private wordRange: Range | null = null;
   private sentenceRanges: Range[] = [];
   private wordLineY: number | null = null;
@@ -45,8 +47,9 @@ export class MarkerOverlay {
     this.root = this.host.attachShadow({ mode: 'open' });
     const style = document.createElement('style');
     style.textContent = `
-      .sentence, .word { position: absolute; left: 0; top: 0; }
+      .sentence, .word, .part { position: absolute; left: 0; top: 0; }
       .sentence { border-radius: 5px; background: var(--sentence); }
+      .part { border-radius: 6px; background: var(--word); }
       .word {
         border-radius: 6px; background: var(--word); opacity: 0;
         transition: transform ${GLIDE}, width ${GLIDE}, height ${GLIDE}, opacity 120ms ease;
@@ -55,7 +58,7 @@ export class MarkerOverlay {
       @media (prefers-reduced-motion: reduce) { .word { transition: none; } }
     `;
     this.word.className = 'word';
-    this.root.append(style, this.sentenceLayer, this.word);
+    this.root.append(style, this.sentenceLayer, this.word, this.wordRest);
     document.documentElement.appendChild(this.host);
     window.addEventListener('scroll', this.onViewportChange, { capture: true, passive: true });
     window.addEventListener('resize', this.onViewportChange, { passive: true });
@@ -91,8 +94,19 @@ export class MarkerOverlay {
   }
 
   private placeWord(snap: boolean): void {
-    const box = this.wordRange && lineBoxes(this.wordRange)[0];
-    if (!box || !visible(this.wordRange!, box)) {
+    const range = this.wordRange;
+    const [box, ...rest] = range ? lineBoxes(range).filter((b) => visible(range, b)) : [];
+    // The marker glides with the first visible fragment; any further lines of a
+    // wrapped word are drawn in place.
+    this.wordRest.replaceChildren(
+      ...rest.map((b) => {
+        const part = document.createElement('div');
+        part.className = 'part';
+        place(part, b);
+        return part;
+      }),
+    );
+    if (!box) {
       this.word.style.opacity = '0';
       this.wordLineY = null;
       return;
