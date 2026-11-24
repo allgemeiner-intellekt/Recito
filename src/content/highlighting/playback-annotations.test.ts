@@ -190,3 +190,38 @@ describe('playback annotations', () => {
     expect(onSeek).not.toHaveBeenCalled();
   });
 });
+
+describe('playback annotations on page blocks', () => {
+  it('highlights the exact word even when spoken text differs from page whitespace', async () => {
+    const { collectBlocks } = await import('../extraction/blocks');
+    const { buildTextNodeMap } = await import('../extraction/dom-mapper');
+    const { chunkBlocks } = await import('@shared/chunker');
+    vi.stubGlobal('CSS', { highlights: new Map() });
+    vi.stubGlobal(
+      'Highlight',
+      class extends Set<Range> {
+        priority = 0;
+      },
+    );
+    document.body.innerHTML =
+      '<article><h2>Title</h2><p>\n   The   quick<span class="ad">AD</span>brown\n  fox jumps.</p></article>';
+    const map = buildTextNodeMap(document.body);
+    const chunks = chunkBlocks(
+      collectBlocks(map, { include: (node) => !node.parentElement?.matches('.ad') }),
+    );
+    expect(chunks.map((c) => c.text)).toEqual(['Title', 'The quick brown fox jumps.']);
+    annotations = new PlaybackAnnotations(
+      document.body,
+      chunks,
+      settings,
+      { isActive: () => true, onSeek: vi.fn(), onInvalidated: vi.fn() },
+      map,
+    );
+    const words = (name: string) => [...CSS.highlights.get(name)!].map((r) => r.toString());
+    annotations.highlightWord(chunks[1], 'brown', 2);
+    expect(words('ir-word')).toEqual(['brown']);
+    annotations.highlightWord(chunks[1], 'jumps.', 4);
+    expect(words('ir-word')).toEqual(['jumps.']);
+    expect(words('ir-sentence')[0]).toMatch(/^The\s+quick.*jumps\.$/s);
+  });
+});

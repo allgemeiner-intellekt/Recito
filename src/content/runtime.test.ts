@@ -4,17 +4,26 @@ import { MSG } from '@shared/messages';
 import { DEFAULT_SETTINGS } from '@shared/constants';
 
 vi.mock('./mount', () => ({ mountToolbar: vi.fn() }));
-vi.mock('./extraction/extractor', () => ({
-  extractContent: () => {
-    const article = document.querySelector('article')!;
-    return {
-      title: 'Private title',
-      textContent: article.textContent!,
-      wordCount: article.textContent!.split(/\s+/).filter(Boolean).length,
-      sourceElement: article,
-    };
-  },
-}));
+vi.mock('./extraction/extractor', async () => {
+  const { buildTextNodeMap } = await import('./extraction/dom-mapper');
+  const { collectBlocks } = await import('./extraction/blocks');
+  return {
+    extractContent: () => {
+      const article = document.querySelector('article')!;
+      const textMap = buildTextNodeMap(document.body);
+      const blocks = collectBlocks(textMap, { include: (node) => article.contains(node) });
+      const textContent = blocks.map((b) => b.text).join('\n\n');
+      return {
+        title: 'Private title',
+        blocks,
+        textMap,
+        textContent,
+        wordCount: textContent.split(/\s+/).filter(Boolean).length,
+        sourceElement: article,
+      };
+    },
+  };
+});
 afterEach(() => {
   vi.unstubAllGlobals();
 });
@@ -82,7 +91,8 @@ it('seeks inside a selection and switches to page scope at the clicked text outs
 });
 
 it('refreshes cached page text when skipping references is enabled or disabled', async () => {
-  document.body.innerHTML = '<article><p>Main words.\nReferences\nReference words.</p></article>';
+  document.body.innerHTML =
+    '<article><p>Main words.</p><h2>References</h2><p>Reference words.</p></article>';
   window.getSelection()?.removeAllRanges();
   vi.stubGlobal('CSS', { highlights: new Map() });
   vi.stubGlobal(

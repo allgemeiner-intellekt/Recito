@@ -27,10 +27,11 @@ export class HighlightManager {
   }
 
   /**
-   * Build the text-node map for the given source element and inject styles.
+   * Use (or build) the text-node map for the source element and inject styles.
+   * Pass the map the chunk offsets were computed against so both agree.
    */
-  init(sourceElement: Element): void {
-    this.textMap = buildTextNodeMap(sourceElement);
+  init(sourceElement: Element, textMap?: TextMapResult): void {
+    this.textMap = textMap ?? buildTextNodeMap(sourceElement);
     this.styleEl = injectHighlightStyles(this.settings);
 
     if (this.useNativeHighlight) {

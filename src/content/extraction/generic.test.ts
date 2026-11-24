@@ -41,3 +41,44 @@ describe('Chinese article extraction', () => {
     },
   );
 });
+
+describe('block extraction', () => {
+  const prose = (n: number) =>
+    Array.from({ length: n }, (_, i) => `Sentence number ${i + 1} explains how markets price new technology.`).join(' ');
+
+  it('reads Readability content as separate blocks, without page chrome', () => {
+    document.body.innerHTML =
+      '<header><nav><a href="/">Home</a><a href="/about">About us</a></nav></header>' +
+      '<main><article><h1>The Trillion Paradox</h1><h2>Introduction</h2>' +
+      `<p>${prose(6)}</p><p>${prose(5)}</p></article></main>` +
+      '<footer><p>Terms of Service and Privacy Policy</p></footer>';
+    const result = extractContent()!;
+    const texts = result.blocks.map((b) => b.text);
+    expect(texts).toContain('Introduction');
+    expect(texts.find((t) => t.startsWith('Sentence number 1 '))).toBeDefined();
+    expect(result.textContent).not.toContain('About us');
+    expect(result.textContent).not.toContain('Privacy Policy');
+    expect(result.blocks.find((b) => b.text === 'Introduction')?.heading).toBe(true);
+  });
+
+  it('keeps content that Readability unwraps from nested wrappers', () => {
+    // Readability replaces a wrapper with its only child and copies the
+    // wrapper's attributes onto it; the child's own identity must survive.
+    document.body.innerHTML =
+      `<article><div class="wrap"><div class="inner"><p>${prose(4)}</p></div></div>` +
+      `<div class="wrap"><section><p>${prose(4).replace(/Sentence/g, 'Clause')}</p></section></div></article>`;
+    const result = extractContent()!;
+    expect(result.textContent).toContain('Sentence number 4 ');
+    expect(result.textContent).toContain('Clause number 4 ');
+  });
+
+  it('points every block character at the same character on the page', () => {
+    document.body.innerHTML = `<article><h2>Heading</h2><p>\n  ${prose(6)}\n</p></article>`;
+    const result = extractContent()!;
+    for (const block of result.blocks) {
+      const fromPage = block.offsets.map((o) => result.textMap.text[o]).join('');
+      expect(fromPage.replace(/\s/g, ' ')).toBe(block.text);
+    }
+  });
+});
+

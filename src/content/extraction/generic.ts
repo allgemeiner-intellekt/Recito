@@ -1,5 +1,5 @@
 import { Readability } from '@mozilla/readability';
-import type { ExtractionResult } from '@shared/types';
+import type { ContentScope } from '@shared/types';
 
 // Selectors for elements that should be stripped before scoring
 const NOISE_SELECTORS = [
@@ -38,7 +38,7 @@ const CANDIDATE_SELECTORS = [
 
 const wordSegmenter = new Intl.Segmenter(undefined, { granularity: 'word' });
 
-function wordCount(text: string): number {
+export function wordCount(text: string): number {
   // Whitespace splitting counts an entire Chinese paragraph as one word.
   // Use word boundaries for both minimum-length checks and density scoring.
   let count = 0;
@@ -129,45 +129,90 @@ function findArticleRoot(): Element | null {
 }
 
 /**
- * Extract article content using Readability with a heuristic fallback.
+ * Run Readability on a clone and map its verdict back onto live elements.
+ *
+ * Every clone element gets an attribute whose *name* is unique to it.
+ * Readability keeps attributes on the nodes it keeps, and when it unwraps an
+ * element it copies the wrapper's attributes onto the child; unique names
+ * mean neither identity is overwritten. The live elements whose marker
+ * survives are exactly the ones Readability judged to be content.
  */
-export function extractGeneric(): ExtractionResult | null {
-  // Try Readability first
-  try {
-    const clone = document.cloneNode(true) as Document;
-    const article = new Readability(clone).parse();
-    if (article && article.textContent && wordCount(article.textContent) > 30) {
-      // Find the live DOM element that best matches the extracted article
-      // (Readability works on a clone, so we need to find the corresponding live element)
-      const liveRoot = findArticleRoot();
-      return {
-        title: article.title,
-        html: article.content,
-        textContent: article.textContent,
-        wordCount: wordCount(article.textContent),
-        sourceElement: liveRoot ?? document.body,
-      };
+function readabilityScope(): ContentScope | null {
+  const live = document.getElementsByTagName('*');
+  const clone = document.cloneNode(true) as Document;
+  const cloned = clone.getElementsByTagName('*');
+  if (live.length !== cloned.length) return null;
+  for (let i = 0; i < cloned.length; i++) cloned[i].setAttribute(`${MARKER}${i}`, '');
+
+  const article = new Readability<Element>(clone, { serializer: (node) => node as Element }).parse();
+  if (!article?.textContent || wordCount(article.textContent) <= 30 || !article.content) return null;
+
+  const kept = new Set<Element>();
+  const collect = (el: Element) => {
+    for (const attr of el.attributes) {
+      if (attr.name.startsWith(MARKER)) {
+        const liveEl = live[Number(attr.name.slice(MARKER.length))];
+        if (liveEl) kept.add(liveEl);
+      }
     }
+  };
+  collect(article.content);
+  for (const el of article.content.getElementsByTagName('*')) collect(el);
+  if (kept.size === 0) return null;
+
+  return {
+    title: article.title || document.title,
+    include: (node) => node.parentElement !== null && kept.has(node.parentElement),
+    sourceElement: commonAncestor(kept),
+  };
+}
+
+const MARKER = 'data-recito-';
+
+/** Lowest common ancestor of a set of elements (first and last in document order suffice). */
+function commonAncestor(elements: Set<Element>): Element | null {
+  let first: Element | null = null;
+  let last: Element | null = null;
+  for (const el of elements) {
+    if (!first || first.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_PRECEDING) first = el;
+    if (!last || last.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING) last = el;
+  }
+  if (!first || !last) return null;
+  let ancestor: Element | null = first;
+  while (ancestor && !ancestor.contains(last)) ancestor = ancestor.parentElement;
+  return ancestor;
+}
+
+/**
+ * Find the article content: Readability first, then a heuristic root with
+ * noise (navigation, ads, comments...) excluded.
+ */
+export function extractGeneric(): ContentScope | null {
+  try {
+    const scope = readabilityScope();
+    if (scope) return scope;
   } catch {
     // Readability failed, fall through to heuristic
   }
 
-  // Heuristic fallback
   const root = findArticleRoot();
   if (!root) return null;
 
-  // Clone root and strip noise for text extraction
+  // Clone root and strip noise to decide whether there is enough prose
   const cleanRoot = root.cloneNode(true) as Element;
   stripNoise(cleanRoot);
-
   const textContent = (cleanRoot as HTMLElement).innerText?.trim() ?? cleanRoot.textContent?.trim() ?? '';
   if (!textContent || wordCount(textContent) < 30) return null;
 
+  const noise = NOISE_SELECTORS.join(',');
   return {
     title: document.title,
-    html: cleanRoot.innerHTML,
-    textContent,
-    wordCount: wordCount(textContent),
-    sourceElement: root, // live DOM element for highlighting
+    include: (node) => {
+      const parent = node.parentElement;
+      if (!parent || !root.contains(parent)) return false;
+      const noisy = parent.closest(noise);
+      return !noisy || noisy === root || !root.contains(noisy);
+    },
+    sourceElement: root,
   };
 }
